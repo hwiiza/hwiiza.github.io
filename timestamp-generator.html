@@ -15,9 +15,9 @@
       cursor: grab;
     }
     li.dragging { opacity: 0.5; }
-    .ts { width: 100px; text-align: right; font-family: monospace; }
+    .ts { width: 110px; text-align: right; font-family: monospace; }
     .name { flex: 1; padding-left: 8px; }
-    .controls { margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+    .controls { margin-bottom: 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   </style>
   <!-- SortableJS を CDN から読み込み -->
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
@@ -26,6 +26,7 @@
   <h2>音声ファイル タイムスタンプジェネレータ</h2>
   <div class="controls">
     <label><input type="checkbox" id="showMs" /> ミリ秒を表示</label>
+    <label><input type="checkbox" id="showNumbers" /> 連番を付与する</label>
     <input type="file" id="fileInput" accept=".mp3,.wav" multiple />
     <button id="copyTs">タイムスタンプをコピー</button>
   </div>
@@ -37,6 +38,7 @@
     const fileListEl = document.getElementById('fileList');
     const totalDurationEl = document.getElementById('totalDuration');
     const showMsCheckbox = document.getElementById('showMs');
+    const showNumbersCheckbox = document.getElementById('showNumbers');
     const copyBtn = document.getElementById('copyTs');
 
     let filesData = [];
@@ -70,31 +72,48 @@
 
     function renderList() {
       fileListEl.innerHTML = '';
-      filesData.forEach(item => {
+      const showNumbers = showNumbersCheckbox.checked;
+      filesData.forEach((item, index) => {
         const li = document.createElement('li');
-        const spanTs = document.createElement('span'); spanTs.className = 'ts'; li.appendChild(spanTs);
-        const spanName = document.createElement('span'); spanName.className = 'name'; spanName.textContent = item.name; li.appendChild(spanName);
+
+        const spanTs = document.createElement('span');
+        spanTs.className = 'ts';
+        li.appendChild(spanTs);
+
+        const spanName = document.createElement('span');
+        spanName.className = 'name';
+        spanName.textContent = showNumbers ? `${index + 1}. ${item.name}` : item.name;
+        li.appendChild(spanName);
+
         fileListEl.appendChild(li);
       });
     }
 
     function updateTimestamps() {
+      const showNumbers = showNumbersCheckbox.checked;
+
       // DOM の順に filesData を再構築
       const newOrder = [];
       fileListEl.querySelectorAll('li').forEach(li => {
-        const name = li.querySelector('.name').textContent;
-        const data = filesData.find(d => d.name === name);
-        newOrder.push(data);
+        let nameText = li.querySelector('.name').textContent;
+        if (showNumbers) {
+          nameText = nameText.replace(/^\d+\.\s*/, ''); // 連番除去
+        }
+        const data = filesData.find(d => d.name === nameText);
+        if (data) newOrder.push(data);
       });
       filesData = newOrder;
 
+      // タイムスタンプと表示名を更新
       let cumMs = 0;
+      const withMs = showMsCheckbox.checked;
       fileListEl.querySelectorAll('li').forEach((li, idx) => {
-        const ts = formatTime(cumMs, showMsCheckbox.checked);
+        const ts = formatTime(cumMs, withMs);
         li.querySelector('.ts').textContent = ts;
+        li.querySelector('.name').textContent = showNumbers ? `${idx + 1}. ${filesData[idx].name}` : filesData[idx].name;
         cumMs += filesData[idx].durationMs;
       });
-      totalDurationEl.textContent = '合計再生時間: ' + formatTime(cumMs, showMsCheckbox.checked);
+      totalDurationEl.textContent = '合計再生時間: ' + formatTime(cumMs, withMs);
     }
 
     function formatTime(ms, withMs) {
@@ -112,9 +131,23 @@
     }
 
     showMsCheckbox.addEventListener('change', updateTimestamps);
+    showNumbersCheckbox.addEventListener('change', () => {
+      renderList();
+      updateTimestamps();
+    });
 
     copyBtn.addEventListener('click', async () => {
-      const lines = filesData.map(d => `${formatTime(filesData.slice(0, filesData.indexOf(d)).reduce((sum, x) => sum + x.durationMs, 0), showMsCheckbox.checked)}  ${d.name}`);
+      let cumMs = 0;
+      const withMs = showMsCheckbox.checked;
+      const showNumbers = showNumbersCheckbox.checked;
+
+      const lines = filesData.map((d, idx) => {
+        const title = showNumbers ? `${idx + 1}. ${d.name}` : d.name;
+        const line = `${formatTime(cumMs, withMs)}  ${title}`;
+        cumMs += d.durationMs;
+        return line;
+      });
+
       await navigator.clipboard.writeText(lines.join('\n'));
       alert('タイムスタンプをコピーしました！');
     });
