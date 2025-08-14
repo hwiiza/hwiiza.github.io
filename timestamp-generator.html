@@ -15,7 +15,7 @@
       cursor: grab;
     }
     li.dragging { opacity: 0.5; }
-    .ts { width: 110px; text-align: right; font-family: monospace; }
+    .ts { width: 100px; text-align: right; font-family: monospace; }
     .name { flex: 1; padding-left: 8px; }
     .controls { margin-bottom: 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   </style>
@@ -43,7 +43,6 @@
 
     let filesData = [];
 
-    // SortableJS を初期化
     new Sortable(fileListEl, {
       animation: 150,
       onEnd: () => updateTimestamps()
@@ -73,16 +72,21 @@
     function renderList() {
       fileListEl.innerHTML = '';
       const showNumbers = showNumbersCheckbox.checked;
+      let cumMs = 0;
+      const withMs = showMsCheckbox.checked;
+
       filesData.forEach((item, index) => {
         const li = document.createElement('li');
 
-        const spanTs = document.createElement('span');
-        spanTs.className = 'ts';
-        li.appendChild(spanTs);
+        const tsText = formatTime(cumMs, withMs);
+        cumMs += item.durationMs;
 
         const spanName = document.createElement('span');
         spanName.className = 'name';
-        spanName.textContent = showNumbers ? `${index + 1}. ${item.name}` : item.name;
+        // 番号 00:00 曲名 の形式
+        spanName.textContent = showNumbers
+          ? `${index + 1} ${tsText} ${item.name}`
+          : `${tsText} ${item.name}`;
         li.appendChild(spanName);
 
         fileListEl.appendChild(li);
@@ -95,25 +99,25 @@
       // DOM の順に filesData を再構築
       const newOrder = [];
       fileListEl.querySelectorAll('li').forEach(li => {
-        let nameText = li.querySelector('.name').textContent;
+        let text = li.querySelector('.name').textContent;
         if (showNumbers) {
-          nameText = nameText.replace(/^\d+\.\s*/, ''); // 連番除去
+          text = text.replace(/^\d+\s+/, ''); // 先頭番号除去
         }
-        const data = filesData.find(d => d.name === nameText);
+        const nameOnly = text.replace(/^\S+\s+/, ''); // 先頭のタイムスタンプ除去
+        const data = filesData.find(d => d.name === nameOnly);
         if (data) newOrder.push(data);
       });
       filesData = newOrder;
 
-      // タイムスタンプと表示名を更新
-      let cumMs = 0;
-      const withMs = showMsCheckbox.checked;
-      fileListEl.querySelectorAll('li').forEach((li, idx) => {
-        const ts = formatTime(cumMs, withMs);
-        li.querySelector('.ts').textContent = ts;
-        li.querySelector('.name').textContent = showNumbers ? `${idx + 1}. ${filesData[idx].name}` : filesData[idx].name;
-        cumMs += filesData[idx].durationMs;
-      });
-      totalDurationEl.textContent = '合計再生時間: ' + formatTime(cumMs, withMs);
+      // 再描画
+      renderList();
+      updateTotalTime();
+    }
+
+    function updateTotalTime() {
+      let cumMs = filesData.reduce((sum, d) => sum + d.durationMs, 0);
+      totalDurationEl.textContent =
+        '合計再生時間: ' + formatTime(cumMs, showMsCheckbox.checked);
     }
 
     function formatTime(ms, withMs) {
@@ -122,18 +126,22 @@
       const mm = Math.floor((totalSec % 3600) / 60);
       const ss = totalSec % 60;
       const msec = ms % 1000;
-      const hhStr = hh > 0 ? String(hh).padStart(2,'0') + ':' : '';
-      const mmStr = String(mm).padStart(2,'0');
-      const ssStr = String(ss).padStart(2,'0');
+      const hhStr = hh > 0 ? String(hh).padStart(2, '0') + ':' : '';
+      const mmStr = String(mm).padStart(2, '0');
+      const ssStr = String(ss).padStart(2, '0');
       return withMs
-        ? `${hhStr}${mmStr}:${ssStr}.${String(msec).padStart(3,'0')}`
+        ? `${hhStr}${mmStr}:${ssStr}.${String(msec).padStart(3, '0')}`
         : `${hhStr}${mmStr}:${ssStr}`;
     }
 
-    showMsCheckbox.addEventListener('change', updateTimestamps);
+    showMsCheckbox.addEventListener('change', () => {
+      renderList();
+      updateTotalTime();
+    });
+
     showNumbersCheckbox.addEventListener('change', () => {
       renderList();
-      updateTimestamps();
+      updateTotalTime();
     });
 
     copyBtn.addEventListener('click', async () => {
@@ -142,10 +150,11 @@
       const showNumbers = showNumbersCheckbox.checked;
 
       const lines = filesData.map((d, idx) => {
-        const title = showNumbers ? `${idx + 1}. ${d.name}` : d.name;
-        const line = `${formatTime(cumMs, withMs)}  ${title}`;
+        const ts = formatTime(cumMs, withMs);
         cumMs += d.durationMs;
-        return line;
+        return showNumbers
+          ? `${idx + 1} ${ts} ${d.name}`
+          : `${ts} ${d.name}`;
       });
 
       await navigator.clipboard.writeText(lines.join('\n'));
