@@ -23,20 +23,17 @@
     button { padding: 8px 12px; border-radius: 6px; border: 1px solid #d1d5db; background: #f9fafb; cursor: pointer; }
     button:hover { background: #f3f4f6; }
   </style>
-  <!-- SortableJS（CDN） -->
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
 </head>
 <body>
   <h2>音声ファイル タイムスタンプジェネレータ</h2>
 
   <div class="controls">
-    <!-- 1行目：ファイル選択 + コピー -->
     <div class="row">
       <input type="file" id="fileInput" accept=".mp3,.wav" multiple />
       <button id="copyTs">タイムスタンプをコピー</button>
     </div>
 
-    <!-- 2行目：連番付与 + ミリ秒表示 -->
     <div class="row">
       <span class="group" role="group" aria-label="連番付与">
         <strong>連番付与</strong>
@@ -49,7 +46,7 @@
   </div>
 
   <ul id="fileList"></ul>
-  <p id="totalDuration">合計再生時間: 00:00</p>
+  <p id="totalDuration">合計再生時間: 00:00:00</p>
 
   <script>
     const fileInput = document.getElementById('fileInput');
@@ -59,10 +56,9 @@
     const copyBtn = document.getElementById('copyTs');
     const numberingRadios = document.querySelectorAll('input[name="numbering"]');
 
-    let filesData = []; // {id, file, durationMs, name}
+    let filesData = [];
     let idSeq = 1;
 
-    // 並べ替え
     new Sortable(fileListEl, {
       animation: 150,
       onEnd: () => updateFromDOMAndRedraw()
@@ -74,7 +70,7 @@
 
       filesData = [];
       fileListEl.innerHTML = '';
-      totalDurationEl.textContent = '合計再生時間: 00:00';
+      totalDurationEl.textContent = '合計再生時間: 00:00:00';
 
       for (const file of files) {
         const url = URL.createObjectURL(file);
@@ -90,15 +86,14 @@
       updateTotalTime();
     });
 
-    // 表示行の構築（現在の設定に準拠）
     function buildLine(idx, cumMs, item) {
       const ts = formatTime(cumMs, showMsCheckbox.checked);
       const mode = getNumberingMode();
       switch (mode) {
-        case 'head':        return `${idx + 1} ${ts} ${item.name}`; // 先頭: 番号 00:00 曲名
-        case 'beforeName':  return `${ts} ${idx + 1} ${item.name}`; // 曲名前: 00:00 番号 曲名
+        case 'head':        return `${idx + 1} ${ts} ${item.name}`;
+        case 'beforeName':  return `${ts} ${idx + 1} ${item.name}`;
         case 'none':
-        default:            return `${ts} ${item.name}`;             // 無し: 00:00 曲名
+        default:            return `${ts} ${item.name}`;
       }
     }
 
@@ -107,13 +102,12 @@
       return checked ? checked.value : 'none';
     }
 
-    // 現在の filesData から UL を再描画
     function renderList() {
       fileListEl.innerHTML = '';
       let cumMs = 0;
       filesData.forEach((item, idx) => {
         const li = document.createElement('li');
-        li.dataset.id = String(item.id); // 復元用の一意ID
+        li.dataset.id = String(item.id);
         const span = document.createElement('span');
         span.className = 'line';
         span.textContent = buildLine(idx, cumMs, item);
@@ -123,7 +117,6 @@
       });
     }
 
-    // DOM 順から filesData を再構築して再描画
     function updateFromDOMAndRedraw() {
       const idToItem = new Map(filesData.map(d => [String(d.id), d]));
       const newOrder = [];
@@ -144,19 +137,15 @@
 
     function formatTime(ms, withMs) {
       const totalSec = Math.floor(ms / 1000);
-      const hh = Math.floor(totalSec / 3600);
-      const mm = Math.floor((totalSec % 3600) / 60);
-      const ss = totalSec % 60;
+      const hh = String(Math.floor(totalSec / 3600)).padStart(2, '0');
+      const mm = String(Math.floor((totalSec % 3600) / 60)).padStart(2, '0');
+      const ss = String(totalSec % 60).padStart(2, '0');
       const msec = ms % 1000;
-      const hhStr = hh > 0 ? String(hh).padStart(2, '0') + ':' : '';
-      const mmStr = String(mm).padStart(2, '0');
-      const ssStr = String(ss).padStart(2, '0');
       return withMs
-        ? `${hhStr}${mmStr}:${ssStr}.${String(msec).padStart(3, '0')}`
-        : `${hhStr}${mmStr}:${ssStr}`;
+        ? `${hh}:${mm}:${ss}.${String(msec).padStart(3, '0')}`
+        : `${hh}:${mm}:${ss}`;
     }
 
-    // 設定変更時は即時再描画
     showMsCheckbox.addEventListener('change', () => {
       renderList();
       updateTotalTime();
@@ -166,7 +155,6 @@
       updateTotalTime();
     }));
 
-    // クリップボードへコピー（現在の表示形式に合わせる）
     copyBtn.addEventListener('click', async () => {
       let cumMs = 0;
       const lines = filesData.map((item, idx) => {
