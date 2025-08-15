@@ -46,7 +46,7 @@
   </div>
 
   <ul id="fileList"></ul>
-  <p id="totalDuration">合計再生時間: 00:00:00</p>
+  <p id="totalDuration">合計再生時間: 00:00</p>
 
   <script>
     const fileInput = document.getElementById('fileInput');
@@ -58,6 +58,7 @@
 
     let filesData = [];
     let idSeq = 1;
+    let totalHoursMode = false; // trueならhh:mm:ss表示、falseならmm:ss表示
 
     new Sortable(fileListEl, {
       animation: 150,
@@ -70,7 +71,7 @@
 
       filesData = [];
       fileListEl.innerHTML = '';
-      totalDurationEl.textContent = '合計再生時間: 00:00:00';
+      totalDurationEl.textContent = '合計再生時間: 00:00';
 
       for (const file of files) {
         const url = URL.createObjectURL(file);
@@ -82,9 +83,16 @@
         URL.revokeObjectURL(url);
       }
 
+      updateDisplayMode();
       renderList();
       updateTotalTime();
     });
+
+    function updateDisplayMode() {
+      const totalMs = filesData.reduce((s, d) => s + d.durationMs, 0);
+      const totalSec = Math.floor(totalMs / 1000);
+      totalHoursMode = totalSec >= 3600; // 1時間以上ならtrue
+    }
 
     function buildLine(idx, cumMs, item) {
       const ts = formatTime(cumMs, showMsCheckbox.checked);
@@ -126,6 +134,7 @@
         if (item) newOrder.push(item);
       });
       filesData = newOrder;
+      updateDisplayMode();
       renderList();
       updateTotalTime();
     }
@@ -137,13 +146,27 @@
 
     function formatTime(ms, withMs) {
       const totalSec = Math.floor(ms / 1000);
-      const hh = String(Math.floor(totalSec / 3600)).padStart(2, '0');
-      const mm = String(Math.floor((totalSec % 3600) / 60)).padStart(2, '0');
-      const ss = String(totalSec % 60).padStart(2, '0');
+      const hh = Math.floor(totalSec / 3600);
+      const mm = Math.floor((totalSec % 3600) / 60);
+      const ss = totalSec % 60;
       const msec = ms % 1000;
-      return withMs
-        ? `${hh}:${mm}:${ss}.${String(msec).padStart(3, '0')}`
-        : `${hh}:${mm}:${ss}`;
+
+      if (totalHoursMode) {
+        // 全体が1時間以上 → hh:mm:ss
+        const hhStr = String(hh).padStart(2, '0');
+        const mmStr = String(mm).padStart(2, '0');
+        const ssStr = String(ss).padStart(2, '0');
+        return withMs
+          ? `${hhStr}:${mmStr}:${ssStr}.${String(msec).padStart(3, '0')}`
+          : `${hhStr}:${mmStr}:${ssStr}`;
+      } else {
+        // 全体が1時間未満 → mm:ss
+        const mmStr = String(mm).padStart(2, '0');
+        const ssStr = String(ss).padStart(2, '0');
+        return withMs
+          ? `${mmStr}:${ssStr}.${String(msec).padStart(3, '0')}`
+          : `${mmStr}:${ssStr}`;
+      }
     }
 
     showMsCheckbox.addEventListener('change', () => {
