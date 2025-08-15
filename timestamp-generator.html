@@ -4,29 +4,24 @@
   <meta charset="UTF-8" />
   <title>音声ファイル タイムスタンプジェネレータ（ドラッグ並べ替え対応）</title>
   <style>
-    ul { list-style: none; padding: 0; }
+    :root { --gap: 10px; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+    ul { list-style: none; padding: 0; margin: 0; }
     li {
-      display: flex;
-      align-items: center;
-      margin: 4px 0;
-      padding: 6px 8px;
-      border: 1px solid #ccc;
-      border-radius: 6px;
-      cursor: grab;
-      user-select: none;
+      display: flex; align-items: center;
+      margin: 4px 0; padding: 6px 8px;
+      border: 1px solid #ccc; border-radius: 6px;
+      cursor: grab; user-select: none;
     }
-    .controls {
-      margin-bottom: 10px;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
+    .controls { display: grid; row-gap: var(--gap); margin-bottom: var(--gap); }
+    .row { display: flex; gap: var(--gap); align-items: center; flex-wrap: wrap; }
     .group {
       display: inline-flex; gap: 8px; align-items: center;
       padding: 6px 8px; border: 1px solid #e5e7eb; border-radius: 8px;
     }
     .line { flex: 1; white-space: pre; }
+    button { padding: 8px 12px; border-radius: 6px; border: 1px solid #d1d5db; background: #f9fafb; cursor: pointer; }
+    button:hover { background: #f3f4f6; }
   </style>
   <!-- SortableJS（CDN） -->
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
@@ -35,20 +30,22 @@
   <h2>音声ファイル タイムスタンプジェネレータ</h2>
 
   <div class="controls">
-    <label class="group">
-      <input type="checkbox" id="showMs" />
-      ミリ秒を表示
-    </label>
+    <!-- 1行目：ファイル選択 + コピー -->
+    <div class="row">
+      <input type="file" id="fileInput" accept=".mp3,.wav" multiple />
+      <button id="copyTs">タイムスタンプをコピー</button>
+    </div>
 
-    <span class="group">
-      <span>連番付与</span>
-      <label><input type="radio" name="numbering" value="none" checked /> 無し</label>
-      <label><input type="radio" name="numbering" value="head" /> 先頭につける</label>
-      <label><input type="radio" name="numbering" value="beforeName" /> 曲名の前につける</label>
-    </span>
-
-    <input type="file" id="fileInput" accept=".mp3,.wav" multiple />
-    <button id="copyTs">タイムスタンプをコピー</button>
+    <!-- 2行目：連番付与 + ミリ秒表示 -->
+    <div class="row">
+      <span class="group" role="group" aria-label="連番付与">
+        <strong>連番付与</strong>
+        <label><input type="radio" name="numbering" value="none" checked /> 無し</label>
+        <label><input type="radio" name="numbering" value="head" /> 先頭につける</label>
+        <label><input type="radio" name="numbering" value="beforeName" /> 曲名の前につける</label>
+      </span>
+      <label class="group"><input type="checkbox" id="showMs" /> ミリ秒を表示</label>
+    </div>
   </div>
 
   <ul id="fileList"></ul>
@@ -89,8 +86,8 @@
         URL.revokeObjectURL(url);
       }
 
-      renderList();         // 現在の設定で描画
-      updateTotalTime();    // 合計時間表示
+      renderList();
+      updateTotalTime();
     });
 
     // 表示行の構築（現在の設定に準拠）
@@ -98,10 +95,10 @@
       const ts = formatTime(cumMs, showMsCheckbox.checked);
       const mode = getNumberingMode();
       switch (mode) {
-        case 'head':        return `${idx + 1} ${ts} ${item.name}`;      // 先頭: 番号 00:00 曲名
-        case 'beforeName':  return `${ts} ${idx + 1} ${item.name}`;      // 曲名前: 00:00 番号 曲名
+        case 'head':        return `${idx + 1} ${ts} ${item.name}`; // 先頭: 番号 00:00 曲名
+        case 'beforeName':  return `${ts} ${idx + 1} ${item.name}`; // 曲名前: 00:00 番号 曲名
         case 'none':
-        default:            return `${ts} ${item.name}`;                  // 無し: 00:00 曲名
+        default:            return `${ts} ${item.name}`;             // 無し: 00:00 曲名
       }
     }
 
@@ -116,7 +113,7 @@
       let cumMs = 0;
       filesData.forEach((item, idx) => {
         const li = document.createElement('li');
-        li.dataset.id = String(item.id);              // 復元用の一意ID
+        li.dataset.id = String(item.id); // 復元用の一意ID
         const span = document.createElement('span');
         span.className = 'line';
         span.textContent = buildLine(idx, cumMs, item);
