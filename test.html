@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>音声ファイル タイムスタンプジェネレータ（ドラッグ並べ替え対応）</title>
+  <style>
+    :root { --gap: 10px; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+    ul { list-style: none; padding: 0; margin: 0; }
+    li {
+      display: flex; align-items: center;
+      margin: 4px 0; padding: 6px 8px;
+      border: 1px solid #ccc; border-radius: 6px;
+      cursor: grab; user-select: none;
+    }
+    .controls { display: grid; row-gap: var(--gap); margin-bottom: var(--gap); }
+    .row { display: flex; gap: var(--gap); align-items: center; flex-wrap: wrap; }
+    .group {
+      display: inline-flex; gap: 8px; align-items: center;
+      padding: 6px 8px; border: 1px solid #e5e7eb; border-radius: 8px;
+    }
+    .line { flex: 1; white-space: pre; }
+    button { padding: 8px 12px; border-radius: 6px; border: 1px solid #d1d5db; background: #f9fafb; cursor: pointer; }
+    button:hover { background: #f3f4f6; }
+    li.summary { cursor: default; background: #f8fafc; border-style: dashed; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+</head>
+<body>
+  <h2>音声ファイル タイムスタンプジェネレータ</h2>
+
+  <div class="controls">
+    <div class="row">
+      <input type="file" id="fileInput" accept=".mp3,.wav" multiple />
+      <button id="copyTs">タイムスタンプをコピー</button>
+    </div>
+    <div class="row">
+      <span class="group" role="group" aria-label="連番付与">
+        <strong>連番付与</strong>
+        <label><input type="radio" name="numbering" value="none" checked /> 無し</label>
+        <label><input type="radio" name="numbering" value="head" /> 先頭につける</label>
+        <label><input type="radio" name="numbering" value="beforeName" /> 曲名の前につける</label>
+      </span>
+      <label class="group"><input type="checkbox" id="showMs" /> ミリ秒を表示</label>
+      <label class="group"><input type="checkbox" id="showRepeat" /> Repeat表示</label>
+    </div>
+  </div>
+
+  <ul id="fileList"></ul>
+  <p id="totalDuration">合計再生時間: 00:00</p>
+
+  <script>
+    const fileInput = document.getElementById('fileInput');
+    const fileListEl = document.getElementById('fileList');
+    const totalDurationEl = document.getElementById('totalDuration');
+    const showMsCheckbox = document.getElementById('showMs');
+    const showRepeatCheckbox = document.getElementById('showRepeat');
+    const copyBtn = document.getElementById('copyTs');
+    const numberingRadios = document.querySelectorAll('input[name="numbering"]');
+
+    let filesData = [];
+    let idSeq = 1;
+    let totalHoursMode = false;
+
+    new Sortable(fileListEl, {
+      animation: 150,
+      filter: '.summary',
+      onMove: (evt) => !evt.related.classList?.contains('summary'),
+      onEnd: () => updateFromDOMAndRedraw()
+    });
+
+    fileInput.addEventListener('change', async (e) => {
+      const files = Array.from(e.target.files);
+      if (!files.length) return;
+
+      filesData = [];
+      fileListEl.innerHTML = '';
+      totalDurationEl.textContent = '合計再生時間: 00:00';
+
+      for (const file of files) {
+        const url = URL.createObjectURL(file);
+        const audio = new Audio(url);
+        await new Promise((res) => audio.addEventListener('loadedmetadata', res, { once: true }));
+        const durationMs = Math.round(audio.duration * 1000);
+        const nameNoExt = file.name.replace(/\.[^/.]+$/, '');
+        filesData.push({ id: idSeq++, file, durationMs, name: nameNoExt });
+        URL.revokeObjectURL(url);
+      }
+
+      updateDisplayMode();
+      renderList();
+      updateTotalTime();
+    });
+
+    function updateDisplayMode() {
+      const totalMs = filesData.reduce((s, d) => s + d.durationMs, 0);
+      totalHoursMode = Math.floor(totalMs / 1000) >= 3600;
+    }
+
+    function buildLine(idx, cumMs, item) {
+      const ts = formatTime(cumMs, showMsCheckbox.checked);
+      const mode = getNumberingMode();
+      switch (mode) {
+        case 'head':        return `${idx + 1} ${ts} ${item.name}`;
+        case 'beforeName':  return `${ts} ${idx + 1} ${item.name}`;
+        case 'none':
+        default:            return `${ts} ${item.name}`;
+      }
+    }
+
+    function buildRepeatLine(idxForNumbering, totalMs) {
+      const ts = formatTime(totalMs, showMsCheckbox.checked);
+      const mode = getNumberingMode();
+      switch (mode) {
+        case 'head':        return `${idxForNumbering} ${ts} Repeat`;
+        case 'beforeName':  return `${ts} ${idxForNumbering} Repeat`;
+        case 'none':
+        default:            return `${ts} Repeat`;
+      }
+    }
+
+    function getNumberingMode() {
+      const checked = [...numberingRadios].find(r => r.checked);
+      return checked ? checked.value : 'none';
+    }
+
+    function renderList() {
+      fileListEl.innerHTML = '';
+      let cumMs = 0;
+
+      filesData.forEach((item, idx) => {
+        const li = document.createElement('li');
+        li.dataset.id = String(item.id);
+        const span = document.createElement('span');
+        span.className = 'line';
+        span.textContent = buildLine(idx, cumMs, item);
+        li.appendChild(span);
+        fileListEl.appendChild(li);
+        cumMs += item.durationMs;
+      });
+
+      if (showRepeatCheckbox.checked) {
+        const summaryLi = document.createElement('li');
+        summaryLi.className = 'summary';
+        const span = document.createElement('span');
+        span.className = 'line';
+        const numberingIndex = filesData.length + 1;
+        span.textContent = buildRepeatLine(numberingIndex, cumMs);
+        summaryLi.appendChild(span);
+        fileListEl.appendChild(summaryLi);
+      }
+    }
+
+    function updateFromDOMAndRedraw() {
+      const idToItem = new Map(filesData.map(d => [String(d.id), d]));
+      const newOrder = [];
+      fileListEl.querySelectorAll('li:not(.summary)').forEach(li => {
+        const id = li.dataset.id;
+        const item = idToItem.get(id);
+        if (item) newOrder.push(item);
+      });
+      filesData = newOrder;
+      updateDisplayMode();
+      renderList();
+      updateTotalTime();
+    }
+
+    function updateTotalTime() {
+      const total = filesData.reduce((s, d) => s + d.durationMs, 0);
+      totalDurationEl.textContent = '合計再生時間: ' + formatTime(total, showMsCheckbox.checked);
+    }
+
+    function formatTime(ms, withMs) {
+      const totalSecAll = Math.floor(filesData.reduce((s, d) => s + d.durationMs, 0) / 1000);
+      const useHour = totalSecAll >= 3600;
+
+      const totalSec = Math.floor(ms / 1000);
+      const hh = Math.floor(totalSec / 3600);
+      const mm = Math.floor((totalSec % 3600) / 60);
+      const ss = totalSec % 60;
+      const msec = ms % 1000;
+
+      if (useHour) {
+        const hhStr = String(hh).padStart(2, '0');
+        const mmStr = String(mm).padStart(2, '0');
+        const ssStr = String(ss).padStart(2, '0');
+        return withMs ? `${hhStr}:${mmStr}:${ssStr}.${String(msec).padStart(3, '0')}`
+                      : `${hhStr}:${mmStr}:${ssStr}`;
+      } else {
+        const mmStr = String(mm).padStart(2, '0');
+        const ssStr = String(ss).padStart(2, '0');
+        return withMs ? `${mmStr}:${ssStr}.${String(msec).padStart(3, '0')}`
+                      : `${mmStr}:${ssStr}`;
+      }
+    }
+
+    showMsCheckbox.addEventListener('change', () => {
+      renderList();
+      updateTotalTime();
+    });
+    showRepeatCheckbox.addEventListener('change', () => {
+      renderList();
+      updateTotalTime();
+    });
+    numberingRadios.forEach(r => r.addEventListener('change', () => {
+      renderList();
+      updateTotalTime();
+    }));
+
+    copyBtn.addEventListener('click', async () => {
+      let cumMs = 0;
+      const lines = filesData.map((item, idx) => {
+        const line = buildLine(idx, cumMs, item);
+        cumMs += item.durationMs;
+        return line;
+      });
+      if (showRepeatCheckbox.checked) {
+        const numberingIndex = filesData.length + 1;
+        lines.push(buildRepeatLine(numberingIndex, cumMs));
+      }
+      await navigator.clipboard.writeText(lines.join('\n'));
+      alert('タイムスタンプをコピーしました！');
+    });
+  </script>
+</body>
+</html>
