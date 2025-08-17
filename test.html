@@ -2,27 +2,32 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <title>音声ファイル タイムスタンプジェネレータ（ドラッグ並べ替え対応）</title>
+  <title>音声ファイル タイムスタンプジェネレータ（編集可・ドラッグ並べ替え対応）</title>
   <style>
     :root { --gap: 10px; }
     body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
     ul { list-style: none; padding: 0; margin: 0; }
     li {
-      display: flex; align-items: center;
+      display: flex; align-items: center; gap: 10px;
       margin: 4px 0; padding: 6px 8px;
       border: 1px solid #ccc; border-radius: 6px;
       cursor: grab; user-select: none;
     }
+    .num { min-width: 2ch; text-align: right; }
+    .ts  { font-family: monospace; min-width: 7ch; cursor: text; }
+    .name { flex: 1; }
     .controls { display: grid; row-gap: var(--gap); margin-bottom: var(--gap); }
     .row { display: flex; gap: var(--gap); align-items: center; flex-wrap: wrap; }
     .group {
       display: inline-flex; gap: 8px; align-items: center;
       padding: 6px 8px; border: 1px solid #e5e7eb; border-radius: 8px;
     }
-    .line { flex: 1; white-space: pre; }
     button { padding: 8px 12px; border-radius: 6px; border: 1px solid #d1d5db; background: #f9fafb; cursor: pointer; }
     button:hover { background: #f3f4f6; }
     li.summary { cursor: default; background: #f8fafc; border-style: dashed; }
+    input.ts-edit {
+      font-family: monospace; font-size: 1em; padding: 2px 4px; width: 10ch;
+    }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
 </head>
@@ -30,10 +35,13 @@
   <h2>音声ファイル タイムスタンプジェネレータ</h2>
 
   <div class="controls">
+    <!-- 1行目：ファイル選択 + コピー -->
     <div class="row">
       <input type="file" id="fileInput" accept=".mp3,.wav" multiple />
       <button id="copyTs">タイムスタンプをコピー</button>
     </div>
+
+    <!-- 2行目：連番付与 + ミリ秒表示 + Repeat表示 -->
     <div class="row">
       <span class="group" role="group" aria-label="連番付与">
         <strong>連番付与</strong>
@@ -58,15 +66,28 @@
     const copyBtn = document.getElementById('copyTs');
     const numberingRadios = document.querySelectorAll('input[name="numbering"]');
 
-    let filesData = [];
+    let filesData = []; // { id, file, name, durationMs, startMs }
     let idSeq = 1;
-    let totalHoursMode = false;
 
+    // 並べ替え（summaryは除外）
     new Sortable(fileListEl, {
       animation: 150,
       filter: '.summary',
       onMove: (evt) => !evt.related.classList?.contains('summary'),
-      onEnd: () => updateFromDOMAndRedraw()
+      onEnd: () => {
+        // DOM順に合わせて並び替え、先頭から再積算
+        const idToItem = new Map(filesData.map(d => [String(d.id), d]));
+        const newOrder = [];
+        fileListEl.querySelectorAll('li:not(.summary)').forEach(li => {
+          const id = li.dataset.id;
+          const it = idToItem.get(id);
+          if (it) newOrder.push(it);
+        });
+        filesData = newOrder;
+        recalcStartsFrom(0, 0); // 0番目を0msから再計算
+        renderList();
+        updateTotalTime();
+      }
     });
 
     fileInput.addEventListener('change', async (e) => {
@@ -80,42 +101,25 @@
       for (const file of files) {
         const url = URL.createObjectURL(file);
         const audio = new Audio(url);
-        await new Promise((res) => audio.addEventListener('loadedmetadata', res, { once: true }));
+        await new Promise(res => audio.addEventListener('loadedmetadata', res, { once: true }));
         const durationMs = Math.round(audio.duration * 1000);
         const nameNoExt = file.name.replace(/\.[^/.]+$/, '');
-        filesData.push({ id: idSeq++, file, durationMs, name: nameNoExt });
+        filesData.push({ id: idSeq++, file, name: nameNoExt, durationMs, startMs: 0 });
         URL.revokeObjectURL(url);
       }
-
-      updateDisplayMode();
+      // 0から順に開始時刻を積算
+      recalcStartsFrom(0, 0);
       renderList();
       updateTotalTime();
     });
 
-    function updateDisplayMode() {
-      const totalMs = filesData.reduce((s, d) => s + d.durationMs, 0);
-      totalHoursMode = Math.floor(totalMs / 1000) >= 3600;
-    }
-
-    function buildLine(idx, cumMs, item) {
-      const ts = formatTime(cumMs, showMsCheckbox.checked);
-      const mode = getNumberingMode();
-      switch (mode) {
-        case 'head':        return `${idx + 1} ${ts} ${item.name}`;
-        case 'beforeName':  return `${ts} ${idx + 1} ${item.name}`;
-        case 'none':
-        default:            return `${ts} ${item.name}`;
-      }
-    }
-
-    function buildRepeatLine(idxForNumbering, totalMs) {
-      const ts = formatTime(totalMs, showMsCheckbox.checked);
-      const mode = getNumberingMode();
-      switch (mode) {
-        case 'head':        return `${idxForNumbering} ${ts} Repeat`;
-        case 'beforeName':  return `${ts} ${idxForNumbering} Repeat`;
-        case 'none':
-        default:            return `${ts} Repeat`;
+    // idx番目の曲の開始時刻をnewStartMsにし、そこから後ろを duration で再積算
+    function recalcStartsFrom(idx, newStartMs) {
+      if (!filesData.length) return;
+      idx = Math.max(0, Math.min(idx, filesData.length - 1));
+      filesData[idx].startMs = Math.max(0, Math.floor(newStartMs));
+      for (let i = idx + 1; i < filesData.length; i++) {
+        filesData[i].startMs = filesData[i - 1].startMs + filesData[i - 1].durationMs;
       }
     }
 
@@ -124,100 +128,196 @@
       return checked ? checked.value : 'none';
     }
 
-    function renderList() {
-      fileListEl.innerHTML = '';
-      let cumMs = 0;
-
-      filesData.forEach((item, idx) => {
-        const li = document.createElement('li');
-        li.dataset.id = String(item.id);
-        const span = document.createElement('span');
-        span.className = 'line';
-        span.textContent = buildLine(idx, cumMs, item);
-        li.appendChild(span);
-        fileListEl.appendChild(li);
-        cumMs += item.durationMs;
-      });
-
-      if (showRepeatCheckbox.checked) {
-        const summaryLi = document.createElement('li');
-        summaryLi.className = 'summary';
-        const span = document.createElement('span');
-        span.className = 'line';
-        const numberingIndex = filesData.length + 1;
-        span.textContent = buildRepeatLine(numberingIndex, cumMs);
-        summaryLi.appendChild(span);
-        fileListEl.appendChild(summaryLi);
-      }
+    function totalDurationMs() {
+      return filesData.reduce((s, d) => s + d.durationMs, 0);
     }
 
-    function updateFromDOMAndRedraw() {
-      const idToItem = new Map(filesData.map(d => [String(d.id), d]));
-      const newOrder = [];
-      fileListEl.querySelectorAll('li:not(.summary)').forEach(li => {
-        const id = li.dataset.id;
-        const item = idToItem.get(id);
-        if (item) newOrder.push(item);
-      });
-      filesData = newOrder;
-      updateDisplayMode();
-      renderList();
-      updateTotalTime();
-    }
-
-    function updateTotalTime() {
-      const total = filesData.reduce((s, d) => s + d.durationMs, 0);
-      totalDurationEl.textContent = '合計再生時間: ' + formatTime(total, showMsCheckbox.checked);
+    function useHourFormat() {
+      // 合計再生時間が1時間以上なら hh:mm:ss（ミリ秒ONなら .SSS）
+      return Math.floor(totalDurationMs() / 1000) >= 3600;
     }
 
     function formatTime(ms, withMs) {
-      const totalSecAll = Math.floor(filesData.reduce((s, d) => s + d.durationMs, 0) / 1000);
-      const useHour = totalSecAll >= 3600;
-
       const totalSec = Math.floor(ms / 1000);
       const hh = Math.floor(totalSec / 3600);
       const mm = Math.floor((totalSec % 3600) / 60);
       const ss = totalSec % 60;
       const msec = ms % 1000;
-
-      if (useHour) {
+      if (useHourFormat()) {
         const hhStr = String(hh).padStart(2, '0');
         const mmStr = String(mm).padStart(2, '0');
         const ssStr = String(ss).padStart(2, '0');
-        return withMs ? `${hhStr}:${mmStr}:${ssStr}.${String(msec).padStart(3, '0')}`
-                      : `${hhStr}:${mmStr}:${ssStr}`;
+        return withMs ? `${hhStr}:${mmStr}:${ssStr}.${String(msec).padStart(3,'0')}` : `${hhStr}:${mmStr}:${ssStr}`;
       } else {
         const mmStr = String(mm).padStart(2, '0');
         const ssStr = String(ss).padStart(2, '0');
-        return withMs ? `${mmStr}:${ssStr}.${String(msec).padStart(3, '0')}`
-                      : `${mmStr}:${ssStr}`;
+        return withMs ? `${mmStr}:${ssStr}.${String(msec).padStart(3,'0')}` : `${mmStr}:${ssStr}`;
       }
     }
 
-    showMsCheckbox.addEventListener('change', () => {
-      renderList();
-      updateTotalTime();
-    });
-    showRepeatCheckbox.addEventListener('change', () => {
-      renderList();
-      updateTotalTime();
-    });
-    numberingRadios.forEach(r => r.addEventListener('change', () => {
-      renderList();
-      updateTotalTime();
-    }));
-
-    copyBtn.addEventListener('click', async () => {
-      let cumMs = 0;
-      const lines = filesData.map((item, idx) => {
-        const line = buildLine(idx, cumMs, item);
-        cumMs += item.durationMs;
-        return line;
-      });
-      if (showRepeatCheckbox.checked) {
-        const numberingIndex = filesData.length + 1;
-        lines.push(buildRepeatLine(numberingIndex, cumMs));
+    // 文字列→msパース（mm:ss[.SSS] / hh:mm:ss[.SSS] の両方を許容）
+    function parseTimeToMs(str) {
+      const s = String(str).trim();
+      const msPart = s.includes('.') ? s.split('.').pop() : null;
+      const main = msPart ? s.slice(0, s.lastIndexOf('.')) : s;
+      const parts = main.split(':').map(v => v.trim());
+      if (parts.some(p => p === '' || isNaN(Number(p)))) return null;
+      let hh = 0, mm = 0, ss = 0;
+      if (parts.length === 2) { // mm:ss
+        [mm, ss] = parts.map(Number);
+      } else if (parts.length === 3) { // hh:mm:ss
+        [hh, mm, ss] = parts.map(Number);
+      } else {
+        return null;
       }
+      if (mm < 0 || ss < 0 || ss >= 60 || mm >= 60 && parts.length===2) return null;
+      if (parts.length === 3 && (mm >= 60 || ss >= 60 || hh < 0)) return null;
+      let msec = 0;
+      if (msPart) {
+        if (!/^\d{1,3}$/.test(msPart)) return null;
+        msec = Number(msPart.padEnd(3, '0')); // .5 → 500 と扱う
+      }
+      return ((hh*3600 + mm*60 + ss) * 1000) + msec;
+    }
+
+    // 行クリックで時刻編集
+    function attachTimeEdit(spanTs, idx) {
+      const startEdit = () => {
+        if (spanTs.querySelector('input')) return; // 二重起動防止
+        const oldDisplay = spanTs.textContent;
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'ts-edit';
+        // 現在の内部msを、表示形式に合わせた文字列で初期化
+        input.value = formatTime(filesData[idx].startMs, showMsCheckbox.checked);
+        spanTs.textContent = '';
+        spanTs.appendChild(input);
+        input.focus();
+        input.select();
+
+        const commit = () => {
+          const ms = parseTimeToMs(input.value);
+          if (ms === null) {
+            alert('時刻の形式が無効です。mm:ss または hh:mm:ss（.SSS可）で入力してください。');
+            spanTs.textContent = oldDisplay;
+            return;
+          }
+          // idx行の開始時刻を変更し、以後を再計算
+          recalcStartsFrom(idx, ms);
+          renderList();         // 再描画（編集欄を閉じるため）
+          updateTotalTime();
+        };
+
+        const cancel = () => {
+          spanTs.textContent = oldDisplay;
+        };
+
+        input.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') commit();
+          if (e.key === 'Escape') cancel();
+        });
+        input.addEventListener('blur', commit);
+      };
+
+      spanTs.addEventListener('click', startEdit);
+      spanTs.addEventListener('dblclick', startEdit);
+    }
+
+    // 1行をDOM構築
+    function renderRow(item, idx) {
+      const li = document.createElement('li');
+      li.dataset.id = String(item.id);
+
+      const mode = getNumberingMode();
+      const showNum = mode !== 'none';
+      const numSpan = document.createElement('span');
+      numSpan.className = 'num';
+      const tsSpan = document.createElement('span');
+      tsSpan.className = 'ts';
+      const nameSpan = document.createElement('span');
+      nameSpan.className = 'name';
+      tsSpan.textContent = formatTime(item.startMs, showMsCheckbox.checked);
+      nameSpan.textContent = item.name;
+      if (showNum) numSpan.textContent = String(idx + 1);
+
+      // 配置：head = 番号, 時刻, 曲名 / beforeName = 時刻, 番号, 曲名 / none = 時刻, 曲名
+      if (mode === 'head') {
+        li.appendChild(numSpan); li.appendChild(tsSpan); li.appendChild(nameSpan);
+      } else if (mode === 'beforeName') {
+        li.appendChild(tsSpan); li.appendChild(numSpan); li.appendChild(nameSpan);
+      } else {
+        li.appendChild(tsSpan); li.appendChild(nameSpan);
+      }
+
+      // 編集ハンドラ
+      attachTimeEdit(tsSpan, idx);
+      return li;
+    }
+
+    // リスト再描画（最後にRepeatを必要なら追加）
+    function renderList() {
+      fileListEl.innerHTML = '';
+      filesData.forEach((item, idx) => {
+        fileListEl.appendChild(renderRow(item, idx));
+      });
+
+      if (showRepeatCheckbox.checked) {
+        const li = document.createElement('li');
+        li.className = 'summary';
+        const mode = getNumberingMode();
+        const showNum = mode !== 'none';
+        const numSpan = document.createElement('span');
+        numSpan.className = 'num';
+        const tsSpan = document.createElement('span');
+        tsSpan.className = 'ts';
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'name';
+
+        tsSpan.textContent = formatTime(totalDurationMs(), showMsCheckbox.checked);
+        nameSpan.textContent = 'Repeat';
+        if (showNum) numSpan.textContent = String(filesData.length + 1);
+
+        if (mode === 'head') {
+          li.appendChild(numSpan); li.appendChild(tsSpan); li.appendChild(nameSpan);
+        } else if (mode === 'beforeName') {
+          li.appendChild(tsSpan); li.appendChild(numSpan); li.appendChild(nameSpan);
+        } else {
+          li.appendChild(tsSpan); li.appendChild(nameSpan);
+        }
+        fileListEl.appendChild(li);
+      }
+    }
+
+    function updateTotalTime() {
+      totalDurationEl.textContent = '合計再生時間: ' + formatTime(totalDurationMs(), showMsCheckbox.checked);
+    }
+
+    // 設定変更時は即時再描画
+    showMsCheckbox.addEventListener('change', () => { renderList(); updateTotalTime(); });
+    showRepeatCheckbox.addEventListener('change', () => { renderList(); updateTotalTime(); });
+    numberingRadios.forEach(r => r.addEventListener('change', () => { renderList(); updateTotalTime(); }));
+
+    // コピー（現在の表示&連番設定に合わせる。Repeatはチェック時のみ）
+    copyBtn.addEventListener('click', async () => {
+      const mode = getNumberingMode();
+      const showNum = mode !== 'none';
+      const withMs = showMsCheckbox.checked;
+
+      const lines = filesData.map((d, idx) => {
+        const ts = formatTime(d.startMs, withMs);
+        if (mode === 'head')        return `${idx + 1} ${ts} ${d.name}`;
+        if (mode === 'beforeName')  return `${ts} ${idx + 1} ${d.name}`;
+        return `${ts} ${d.name}`;
+      });
+
+      if (showRepeatCheckbox.checked) {
+        const ts = formatTime(totalDurationMs(), withMs);
+        const n = filesData.length + 1;
+        if (mode === 'head')        lines.push(`${n} ${ts} Repeat`);
+        else if (mode === 'beforeName') lines.push(`${ts} ${n} Repeat`);
+        else                        lines.push(`${ts} Repeat`);
+      }
+
       await navigator.clipboard.writeText(lines.join('\n'));
       alert('タイムスタンプをコピーしました！');
     });
