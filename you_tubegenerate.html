@@ -65,17 +65,26 @@
   </div>
 
   <script>
-    // --- YouTube IFrame API ロード ---
+    // --- YouTube IFrame API ロード（堅牢化） ---
     const tag = document.createElement('script');
-    tag.src = "https://www.youtube.com/iframe_api";
+    tag.src = 'https://www.youtube.com/iframe_api';
+    tag.async = true;
+    tag.onerror = () => {
+      try { document.getElementById('status').textContent = 'YouTube APIの読み込みに失敗しました'; } catch(_) {}
+    };
     document.head.appendChild(tag);
+    setTimeout(() => {
+      if (!(window.YT && window.YT.Player)) {
+        try { document.getElementById('status').textContent = 'YouTube APIが読み込まれていません（拡張機能やネットワーク設定をご確認ください）'; } catch(_) {}
+      }
+    }, 3500);
 
     let player = null;
     let stamps = []; // { time:number, label:string }
     let lastPausedAt = null;
     let useHMS = false; // 総再生時間でフォーマット切替
     let isReady = false; // プレイヤー準備状態
-    let pendingVideoId = ''; // ready前に指定されたIDを保持
+    let pendingVideoId = '';
 
     // YouTube IFrame API コールバック（グローバル）
     window.onYouTubeIframeAPIReady = function() {
@@ -83,8 +92,13 @@
         height: '100%',
         width: '100%',
         videoId: '',
+        host: 'https://www.youtube-nocookie.com',
         playerVars: (function(){ const pv = { playsinline: 1 }; if (/^https?:$/i.test(location.protocol)) pv.origin = location.origin; return pv; })(),
-        events: { 'onReady': onReady, 'onStateChange': onStateChange, 'onError': onError }
+        events: {
+          'onReady': onReady,
+          'onStateChange': onStateChange,
+          'onError': onError,
+        }
       });
     };
 
@@ -116,6 +130,7 @@
         }
       }
     }
+
     function onError(e) {
       try {
         console.error('YouTube IFrame API error:', e);
@@ -222,7 +237,6 @@
       if (!id) { alert('URLまたは動画IDを入力してください'); return; }
       if (isReady) {
         try { player.cueVideoById(id); } catch(_) {}
-        setTimeout(() => ensureCueOrLoad(id, 0), 1200); // フォールバック
       } else {
         pendingVideoId = id; // onReadyでcue
       }
@@ -241,7 +255,6 @@
         await navigator.clipboard.writeText(txt);
         document.getElementById('status').textContent = 'コピーしました';
       } catch (e) {
-        // 非HTTPSや権限不可など。選択して案内
         const ta = document.getElementById('preview');
         ta.focus();
         ta.select();
@@ -272,43 +285,18 @@
       try {
         const u = new URL(raw);
         const host = u.hostname.replace(/^www\./, '');
-        const pathSegs = u.pathname.split('/').filter(Boolean);
-        // youtu.be/VIDEOID
-        if (host.includes('youtu.be') && pathSegs[0]) return pathSegs[0];
-        // youtube.com/watch?v=VIDEOID
+        const segs = u.pathname.split('/').filter(Boolean);
+        if (host.includes('youtu.be') && segs[0]) return segs[0];
         const v = u.searchParams.get('v');
         if (v) return v;
-        // youtube.com/shorts/VIDEOID
-        if (pathSegs[0] === 'shorts' && pathSegs[1]) return pathSegs[1];
-        // youtube.com/embed/VIDEOID
-        if (pathSegs[0] === 'embed' && pathSegs[1]) return pathSegs[1];
-        // その他: 最後のセグメントを候補として返す
-        if (pathSegs.length) return pathSegs[pathSegs.length - 1];
+        if (segs[0] === 'shorts' && segs[1]) return segs[1];
+        if (segs[0] === 'embed' && segs[1]) return segs[1];
+        if (segs.length) return segs[segs.length - 1];
       } catch(_) {
-        // URLでなければそのまま返す
         return raw;
       }
       return raw;
-    } catch(_) {
-        return input.trim();
-      }
-      return input.trim();
     }
-      // フォールバック: CUEDにならない場合の対処
-    function ensureCueOrLoad(id, phase) {
-      try {
-        const st = player.getPlayerState();
-        if (st === YT.PlayerState.CUED || st === YT.PlayerState.PAUSED || st === YT.PlayerState.PLAYING) return;
-      } catch(_) {}
-      if (phase === 0) {
-        try { player.loadVideoById(id); } catch(_) {}
-        setTimeout(() => { try { player.pauseVideo(); } catch(_) {} }, 500);
-        setTimeout(() => ensureCueOrLoad(id, 1), 1400);
-      } else if (phase === 1) {
-        try { player.cueVideoById(id); } catch(_) {}
-      }
-    }
-
   </script>
 </body>
 </html>
