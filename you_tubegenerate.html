@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>YouTube タイムスタンプ作成ツール</title>
+  <style>
+    :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, "Hiragino Kaku Gothic ProN", Meiryo, sans-serif; }
+    body { margin: 24px; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    input[type="text"], textarea { padding: 8px; border: 1px solid #ddd; border-radius: 8px; }
+    input[type="text"] { flex: 1; min-width: 280px; }
+    button { padding: 8px 12px; border: 1px solid #ddd; border-radius: 8px; cursor: pointer; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    #playerWrap { width: 720px; max-width: 100%; aspect-ratio: 16/9; background: #000; border-radius: 12px; overflow: hidden; }
+    #player { width: 100%; height: 100%; }
+    .time { font-variant-numeric: tabular-nums; font-weight: 700; }
+    .hint { color: #666; font-size: 12px; }
+    .pill { background:#f5f5f5; border-radius:999px; padding:4px 8px; }
+    ul { list-style: none; padding: 0; margin: 0; }
+    li.stamp { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; padding: 8px; border: 1px solid #eee; border-radius: 10px; margin-top: 8px; }
+    .title { width: 100%; padding: 6px 8px; border: 1px solid #ddd; border-radius: 8px; }
+    .stack { display: grid; gap: 8px; }
+    .grid { display: grid; gap: 20px; grid-template-columns: 1fr; }
+    @media (min-width: 900px) { .grid { grid-template-columns: 1fr 1fr; } }
+    textarea { width: 100%; height: 140px; }
+  </style>
+</head>
+<body>
+  <h1>YouTube タイムスタンプ作成ツール</h1>
+
+  <div class="stack" style="margin-bottom:16px">
+    <div class="row">
+      <input id="videoInput" type="text" placeholder="YouTubeのURL または 動画ID" />
+      <button id="loadBtn">読み込み</button>
+      <span class="hint">例: https://www.youtube.com/watch?v=dQw4w9WgXcQ</span>
+    </div>
+    <div class="row">
+      <button id="playBtn" disabled>再生</button>
+      <button id="pauseBtn" disabled>一時停止</button>
+      <button id="addBtn" disabled>現在位置でタイムスタンプ追加</button>
+      <span id="status" class="pill">未ロード</span>
+    </div>
+    <div class="row">
+      <span>現在位置: <strong id="currentTime" class="time">00:00</strong></span>
+      <span>／ 最終停止位置: <strong id="pausedAt" class="time">--:--</strong></span>
+      <button id="snapPauseBtn" disabled>最終停止位置で追加</button>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="stack">
+      <div id="playerWrap"><div id="player"></div></div>
+      <div class="hint">スペースキー: 再生/一時停止、Enter: 現在位置を追加</div>
+    </div>
+
+    <div class="stack">
+      <h2>タイムスタンプ</h2>
+      <ul id="list"></ul>
+      <div class="row">
+        <button id="copyBtn" disabled>一覧をコピー</button>
+      </div>
+      <textarea id="preview" readonly placeholder="ここにコピー内容が表示されます"></textarea>
+    </div>
+  </div>
+
+  <script>
+    // --- YouTube IFrame API ロード ---
+    const tag = document.createElement('script');
+    tag.src = "https://www.youtube.com/iframe_api";
+    document.head.appendChild(tag);
+
+    let player = null;
+    let stamps = []; // { time:number, label:string }
+    let lastPausedAt = null;
+    let useHMS = false; // 総再生時間でフォーマット切替
+    let isReady = false; // プレイヤー準備状態
+    let pendingVideoId = ''; // ready前に指定されたIDを保持
+
+    // YouTube IFrame API コールバック（グローバル）
+    window.onYouTubeIframeAPIReady = function() {
+      player = new YT.Player('player', {
+        height: '100%',
+        width: '100%',
+        videoId: '',
+        playerVars: (function(){ const pv = { playsinline: 1 }; if (/^https?:$/i.test(location.protocol)) pv.origin = location.origin; return pv; })(),
+        events: { 'onReady': onReady, 'onStateChange': onStateChange, 'onError': onError }
+      });
+    };
+
+    function onReady() {
+      isReady = true;
+      if (pendingVideoId) {
+        try { player.cueVideoById(pendingVideoId); } catch(_) {}
+        pendingVideoId = '';
+      }
+      updateFormatMode();
+      loopUpdateCurrentTime();
+    }
+
+    function onStateChange(e) {
+      if (!e) return;
+      if (e.data === YT.PlayerState.PAUSED) {
+        lastPausedAt = player.getCurrentTime();
+        document.getElementById('pausedAt').textContent = fmt(lastPausedAt);
+      }
+      if (e.data === YT.PlayerState.CUED) {
+        updateFormatMode();
+        setControlsEnabled(true);
+        try {
+          const data = player.getVideoData && player.getVideoData();
+          const vid = data && (data.video_id || data.videoId) || '';
+          document.getElementById('status').textContent = vid ? ('読み込み完了: ' + vid) : '読み込み完了';
+        } catch(_) {
+          document.getElementById('status').textContent = '読み込み完了';
+        }
+      }
+    }
+    function onError(e) {
+      try {
+        console.error('YouTube IFrame API error:', e);
+        var code = e && e.data;
+        document.getElementById('status').textContent = 'エラー: ' + code;
+      } catch(_) {}
+    }
+
+    function updateFormatMode() {
+      try {
+        const dur = player.getDuration();
+        useHMS = dur >= 3600; // 60分以上なら hh:mm:ss
+      } catch {}
+    }
+
+    function loopUpdateCurrentTime() {
+      if (player && typeof player.getCurrentTime === 'function') {
+        const t = player.getCurrentTime();
+        document.getElementById('currentTime').textContent = isFinite(t) ? fmt(t) : '00:00';
+      }
+      requestAnimationFrame(loopUpdateCurrentTime);
+    }
+
+    function setControlsEnabled(ready) {
+      document.getElementById('playBtn').disabled = !ready;
+      document.getElementById('pauseBtn').disabled = !ready;
+      document.getElementById('addBtn').disabled = !ready;
+      document.getElementById('snapPauseBtn').disabled = !ready;
+      document.getElementById('copyBtn').disabled = stamps.length === 0;
+    }
+
+    function fmt(sec) {
+      if (!isFinite(sec)) return '--:--';
+      sec = Math.max(0, Math.floor(sec));
+      const h = Math.floor(sec / 3600);
+      const m = Math.floor((sec % 3600) / 60);
+      const s = sec % 60;
+      const mm = String(m).padStart(2,'0');
+      const ss = String(s).padStart(2,'0');
+      if (useHMS) {
+        const hh = String(h).padStart(2,'0');
+        return `${hh}:${mm}:${ss}`;
+      }
+      return `${mm}:${ss}`;
+    }
+
+    function rebuildList() {
+      // 互換: 数値だけの古い要素が残っていたらオブジェクト化
+      stamps = stamps.map(x => (typeof x === 'number' ? { time: x, label: '' } : x));
+      stamps.sort((a,b)=>a.time-b.time);
+      const ul = document.getElementById('list');
+      ul.innerHTML = '';
+      for (const item of stamps) {
+        const li = document.createElement('li');
+        li.className = 'stamp';
+        const time = document.createElement('code');
+        time.className = 'time';
+        time.textContent = fmt(item.time);
+        const title = document.createElement('input');
+        title.className = 'title';
+        title.value = item.label || '';
+        title.placeholder = '（任意）見出し';
+        title.addEventListener('input', () => { item.label = title.value; buildPreview(); });
+        const del = document.createElement('button');
+        del.textContent = '削除';
+        del.addEventListener('click', () => {
+          stamps = stamps.filter(x=>x!==item);
+          rebuildList();
+          buildPreview();
+        });
+        li.append(time, title, del);
+        ul.appendChild(li);
+      }
+      document.getElementById('copyBtn').disabled = stamps.length === 0;
+      buildPreview();
+    }
+
+    function buildPreview() {
+      const lines = stamps
+        .sort((a,b)=>a.time-b.time)
+        .map(x => `${fmt(x.time)}${x.label ? ' ' + x.label : ''}`);
+      document.getElementById('preview').value = lines.join('
+');
+    }
+
+    function addCurrent() {
+      if (!player) return;
+      const t = player.getCurrentTime();
+      if (!isFinite(t)) return;
+      stamps.push({ time: t, label: '' });
+      rebuildList();
+    }
+
+    function addFromPaused() {
+      if (lastPausedAt == null) return;
+      stamps.push({ time: lastPausedAt, label: '' });
+      rebuildList();
+    }
+
+    // --- UI ハンドラ ---
+    document.getElementById('loadBtn').addEventListener('click', () => {
+      const input = document.getElementById('videoInput').value.trim();
+      const id = parseVideoId(input);
+      if (!id) { alert('URLまたは動画IDを入力してください'); return; }
+      if (isReady) {
+        try { player.cueVideoById(id); } catch(_) {}
+        setTimeout(() => ensureCueOrLoad(id, 0), 1200); // フォールバック
+      } else {
+        pendingVideoId = id; // onReadyでcue
+      }
+      setControlsEnabled(false);
+      document.getElementById('status').textContent = '読み込み中…';
+    });
+
+    document.getElementById('playBtn').addEventListener('click', () => player && player.playVideo());
+    document.getElementById('pauseBtn').addEventListener('click', () => player && player.pauseVideo());
+    document.getElementById('addBtn').addEventListener('click', addCurrent);
+    document.getElementById('snapPauseBtn').addEventListener('click', addFromPaused);
+
+    document.getElementById('copyBtn').addEventListener('click', async () => {
+      const txt = document.getElementById('preview').value;
+      try {
+        await navigator.clipboard.writeText(txt);
+        document.getElementById('status').textContent = 'コピーしました';
+      } catch (e) {
+        // 非HTTPSや権限不可など。選択して案内
+        const ta = document.getElementById('preview');
+        ta.focus();
+        ta.select();
+        document.getSelection().removeAllRanges();
+        document.getElementById('status').textContent = 'コピーに失敗。手動でCtrl/Cmd+Cでコピーしてください';
+      }
+    });
+
+    // キーボードショートカット
+    window.addEventListener('keydown', (e) => {
+      const tag = (e.target.tagName || '').toLowerCase();
+      if (tag === 'input' || tag === 'textarea') return; // 入力中は無効
+      if (e.code === 'Space') {
+        e.preventDefault();
+        const st = player.getPlayerState();
+        if (st === YT.PlayerState.PLAYING) player.pauseVideo();
+        else player.playVideo();
+      } else if (e.key === 'Enter') {
+        addCurrent();
+      }
+    });
+
+    function parseVideoId(input) {
+      if (!input) return '';
+      const raw = input.trim();
+      // すでにIDらしい場合（11文字前後、英数-_）はそのまま
+      if (/^[a-zA-Z0-9_-]{10,}$/u.test(raw) && !raw.includes('http')) return raw;
+      try {
+        const u = new URL(raw);
+        const host = u.hostname.replace(/^www\./, '');
+        const pathSegs = u.pathname.split('/').filter(Boolean);
+        // youtu.be/VIDEOID
+        if (host.includes('youtu.be') && pathSegs[0]) return pathSegs[0];
+        // youtube.com/watch?v=VIDEOID
+        const v = u.searchParams.get('v');
+        if (v) return v;
+        // youtube.com/shorts/VIDEOID
+        if (pathSegs[0] === 'shorts' && pathSegs[1]) return pathSegs[1];
+        // youtube.com/embed/VIDEOID
+        if (pathSegs[0] === 'embed' && pathSegs[1]) return pathSegs[1];
+        // その他: 最後のセグメントを候補として返す
+        if (pathSegs.length) return pathSegs[pathSegs.length - 1];
+      } catch(_) {
+        // URLでなければそのまま返す
+        return raw;
+      }
+      return raw;
+    } catch(_) {
+        return input.trim();
+      }
+      return input.trim();
+    }
+      // フォールバック: CUEDにならない場合の対処
+    function ensureCueOrLoad(id, phase) {
+      try {
+        const st = player.getPlayerState();
+        if (st === YT.PlayerState.CUED || st === YT.PlayerState.PAUSED || st === YT.PlayerState.PLAYING) return;
+      } catch(_) {}
+      if (phase === 0) {
+        try { player.loadVideoById(id); } catch(_) {}
+        setTimeout(() => { try { player.pauseVideo(); } catch(_) {} }, 500);
+        setTimeout(() => ensureCueOrLoad(id, 1), 1400);
+      } else if (phase === 1) {
+        try { player.cueVideoById(id); } catch(_) {}
+      }
+    }
+
+  </script>
+</body>
+</html>
