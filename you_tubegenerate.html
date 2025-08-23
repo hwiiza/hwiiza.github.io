@@ -178,8 +178,7 @@
     window.onYouTubeIframeAPIReady = function(){
       player = new YT.Player('player', {
         height:'100%', width:'100%', videoId:'',
-        host:'https://www.youtube-nocookie.com',
-        playerVars:{ playsinline:1, origin: location.origin, enablejsapi:1 },
+        playerVars:{ playsinline:1, origin: (location.protocol==='file:' ? 'https://hwiiza.github.io' : location.origin), enablejsapi:1 },
         events:{ 'onReady': onReady, 'onStateChange': onStateChange, 'onError': onError }
       });
     };
