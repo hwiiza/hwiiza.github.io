@@ -18,7 +18,7 @@
     .hint { color: #666; font-size: 12px; }
     .pill { background:#f5f5f5; border-radius:999px; padding:4px 8px; }
     ul { list-style: none; padding: 0; margin: 0; }
-    li.stamp {$1margin-top: 0;$2}
+    li.stamp { display: grid; grid-template-columns: auto 1fr auto; align-items: center; column-gap: 8px; margin: 0; }
     /* 2個目以降だけ上マージンを付与して上詰めにする */
     #list .stamp + .stamp { margin-top: 8px; }
     .title { width: 100%; padding: 6px 8px; border: 1px solid #ddd; border-radius: 8px; }
@@ -31,26 +31,27 @@
     @media (min-width: 700px) { .tsgrid { grid-template-columns: 1fr 1fr; } }
     .tsgrid .previewArea { display: grid; gap: 8px; }
     /* 長いリストでも使いやすいようにスクロール */
-    #list { max-height: 60vh; overflow: auto; }
+    #list { display:flex; flex-direction:column; gap:8px; margin:0; max-height:60vh; overflow-y:auto; overflow-x:hidden; align-items:stretch; justify-content:flex-start; }
       /* ヘッダー下の余白を詰める */
     .stack > h2 { margin: 0 0 6px; }
       /* タイムスタンプ一覧を上詰めにする */
     .tsgrid { align-items: start; }
     .tsgrid > * { align-self: start; }
     .listArea { display: grid; align-content: start; }
-    #list { margin-top: 0; display: grid; align-content: start; }
+    #list { display:flex; flex-direction:column; gap:8px; margin:0; max-height:60vh; overflow-y:auto; overflow-x:hidden; align-items:stretch; justify-content:flex-start; }
       /* 強制的に上詰めで横並び：小画面は縦→大画面は横 */
     .tsgrid { display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
     @media (min-width: 700px) { .tsgrid { flex-direction: row; } }
     .tsgrid > * { align-self: flex-start; }
     .listArea { align-self: flex-start; }
-    #list { margin-top: 0; max-height: 60vh; overflow: auto; display: block; }
+    #list { display:flex; flex-direction:column; gap:8px; margin:0; max-height:60vh; overflow-y:auto; overflow-x:hidden; align-items:stretch; justify-content:flex-start; }
       /* ===== レイアウト修正：上詰め & 横スクロール抑止 ===== */
     .tsgrid { display: grid; gap: 12px; grid-template-columns: 1fr; align-items: start; }
     @media (min-width: 700px) { .tsgrid { grid-template-columns: 1fr 1fr; } }
     .tsgrid > * { align-self: start; }
     .listArea, .previewArea { min-width: 0; }
-    #list { display: grid; row-gap: 8px; margin: 0; max-height: 60vh; overflow-y: auto; overflow-x: hidden; }
+    .listArea { display:flex; align-items:stretch; align-content:flex-start; }
+    #list { display:flex; flex-direction:column; gap:8px; margin:0; max-height:60vh; overflow-y:auto; overflow-x:hidden; align-items:stretch; justify-content:flex-start; }
     li.stamp { display: grid; grid-template-columns: auto 1fr auto; align-items: center; column-gap: 8px; margin: 0; }
     #list .stamp + .stamp { margin-top: 0; } /* row-gap を使用するため */
     li.stamp .title { width: 100%; min-width: 0; }
