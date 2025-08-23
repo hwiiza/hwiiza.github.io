@@ -83,357 +83,86 @@
   </div>
 
   <script>
-    // --- モード管理 ---
+  (function(){
+    // ====== 状態 ======
     let mode = 'youtube'; // 'youtube' | 'file'
-
-    function setMode(newMode){
-      mode = newMode;
-      const ytRow = document.getElementById('ytRow');
-      const fileName = document.getElementById('fileName');
-      const fm = document.getElementById('fileMedia');
-      const iframe = document.querySelector('#playerWrap iframe');
-      if (mode === 'youtube'){
-        ytRow.classList.remove('hidden');
-        fileName.classList.add('hidden');
-        fm.style.display = 'none';
-        if (iframe) iframe.style.display = '';
-        setControlsEnabled(isYTReady);
-        document.getElementById('status').textContent = '未ロード';
-      } else {
-        ytRow.classList.add('hidden');
-        fileName.classList.remove('hidden');
-        fm.style.display = '';
-        if (iframe) iframe.style.display = 'none';
-        setControlsEnabled(isFileReady);
-        document.getElementById('status').textContent = 'ファイル未選択';
-      }
-    } else {
-        // 入力欄は隠すが、同じボタンを「ファイルを選択」として使う
-        videoInputEl.classList.add('hidden');
-        if (loadBtn) loadBtn.textContent = 'ファイルを選択';
-        fileName.classList.remove('hidden');
-        fm.style.display = '';
-        if (iframe) iframe.style.display = 'none';
-        setControlsEnabled(isFileReady);
-        document.getElementById('status').textContent = 'ファイル未選択';
-      }
-    } else {
-        ytRow.classList.add('hidden');
-        fileName.classList.remove('hidden');
-        fm.style.display = '';
-        const iframe = document.querySelector('#playerWrap iframe');
-        if (iframe) iframe.style.display = 'none';
-        setControlsEnabled(isFileReady);
-        document.getElementById('status').textContent = 'ファイル未選択';
-      }
-    }
-
-    Array.from(document.getElementsByName('mode')).forEach(function(radio){
-      radio.addEventListener('change', function(e){ setMode(e.target.value); });
-    });
-
-    // --- YouTube IFrame API ロード（堅牢化） ---
-    (function loadYT(){
-      const tag = document.createElement('script');
-      tag.src = 'https://www.youtube.com/iframe_api';
-      tag.async = true;
-      tag.onerror = () => { try { document.getElementById('status').textContent = 'YouTube APIの読み込みに失敗しました'; } catch(_) {} };
-      document.head.appendChild(tag);
-      setTimeout(() => {
-        if (!(window.YT && window.YT.Player)) {
-          try { document.getElementById('status').textContent = 'YouTube APIが読み込まれていません（拡張機能やネットワーク設定をご確認ください）'; } catch(_) {}
-        }
-      }, 3500);
-    })();
-
-    let player = null;     // YT
+    let player = null;    // YouTube
     let isYTReady = false;
     let pendingVideoId = '';
 
-    let fileReadyURL = null; // blob URL cleanup
+    let stamps = [];      // { time:number, label:string }
+    let useHMS = false;   // mm:ss / hh:mm:ss 切替
+
     const fileMedia = document.getElementById('fileMedia');
     let isFileReady = false;
+    let fileReadyURL = null;
 
-    let stamps = []; // { time:number, label:string }
-    let useHMS = false; // 総再生時間でフォーマット切替（現在のモードのメディア長で決定）
+    // ====== ユーティリティ ======
+    const $ = (sel) => document.querySelector(sel);
+    function statusMsg(msg){ const s=$('#status'); if (s) s.textContent = msg; }
 
-    // IFrame API callback (global)
-    window.onYouTubeIframeAPIReady = function() {
+    function fmt(sec){ if(!isFinite(sec)) return '--:--'; sec=Math.max(0,Math.floor(sec)); const h=Math.floor(sec/3600), m=Math.floor((sec%3600)/60), s=sec%60; const mm=String(m).padStart(2,'0'); const ss=String(s).padStart(2,'0'); return useHMS? `${String(h).padStart(2,'0')}:${mm}:${ss}` : `${mm}:${ss}`; }
+
+    function getCurrentTime(){ return mode==='youtube' ? (player && player.getCurrentTime? player.getCurrentTime():0) : (fileMedia && fileMedia.currentTime||0); }
+
+    function updateFormatMode(){ try{ const dur = mode==='youtube' ? (player && player.getDuration? player.getDuration():0) : (fileMedia && isFinite(fileMedia.duration) ? fileMedia.duration : 0); useHMS = dur >= 3600; }catch(_){} }
+
+    function setControlsEnabled(ready){ const tgl=$('#toggleBtn'); if(tgl) tgl.disabled=!ready; $('#addBtn').disabled=!ready; $('#copyBtn').disabled=stamps.length===0; const clr=$('#clearBtn'); if (clr) clr.disabled=stamps.length===0; }
+
+    function rebuildList(){ stamps = stamps.map(x=> typeof x==='number'? {time:x,label:''}:x).sort((a,b)=>a.time-b.time); const ul=$('#list'); ul.innerHTML=''; for(const item of stamps){ const li=document.createElement('li'); li.className='stamp'; const time=document.createElement('code'); time.className='time'; time.textContent=fmt(item.time); const title=document.createElement('input'); title.className='title'; title.value=item.label||''; title.placeholder='（任意）見出し'; title.addEventListener('input',()=>{ item.label=title.value; buildPreview(); }); const del=document.createElement('button'); del.textContent='削除'; del.addEventListener('click',()=>{ stamps=stamps.filter(x=>x!==item); rebuildList(); buildPreview(); }); li.append(time,title,del); ul.appendChild(li);} setControlsEnabled(mode==='youtube'? isYTReady: isFileReady); buildPreview(); }
+
+    function buildPreview(){ const txt=stamps.slice().sort((a,b)=>a.time-b.time).map(x=>`${fmt(x.time)}${x.label? ' '+x.label:''}`).join('
+'); $('#preview').value = txt; }
+
+    // ====== プレイヤー描画 ======
+    function loopUpdateCurrentTime(){ const t=getCurrentTime(); $('#currentTime').textContent = isFinite(t)? fmt(t) : '00:00'; requestAnimationFrame(loopUpdateCurrentTime); }
+
+    // ====== YouTube IFrame API 読み込み ======
+    (function loadYT(){ const tag=document.createElement('script'); tag.src='https://www.youtube.com/iframe_api'; tag.async=true; tag.onerror=()=>statusMsg('YouTube APIの読み込みに失敗しました'); document.head.appendChild(tag); setTimeout(()=>{ if(!(window.YT&&window.YT.Player)) statusMsg('YouTube APIが読み込まれていません'); }, 3500); })();
+
+    window.onYouTubeIframeAPIReady = function(){
       player = new YT.Player('player', {
-        height: '100%',
-        width: '100%',
-        videoId: '',
-        host: 'https://www.youtube-nocookie.com',
-        playerVars: { playsinline: 1, origin: location.origin, enablejsapi: 1 },
-        events: { 'onReady': onReady, 'onStateChange': onStateChange, 'onError': onError }
+        height:'100%', width:'100%', videoId:'', host:'https://www.youtube-nocookie.com',
+        playerVars:{ playsinline:1, origin: location.origin, enablejsapi:1 },
+        events:{ onReady, onStateChange, onError }
       });
     };
 
-    function onReady() {
-      isYTReady = true;
-      if (pendingVideoId) { try { player.cueVideoById(pendingVideoId); } catch(_) {} pendingVideoId = ''; }
-      updateFormatMode();
-      loopUpdateCurrentTime();
-      setControlsEnabled(mode === 'youtube' ? isYTReady : isFileReady);
-    }
+    function onReady(){ isYTReady = true; statusMsg('未ロード'); if (pendingVideoId){ try{ player.cueVideoById(pendingVideoId); }catch(_){} pendingVideoId=''; } updateFormatMode(); loopUpdateCurrentTime(); setControlsEnabled(mode==='youtube'? isYTReady: isFileReady); }
+    function onStateChange(e){ if(!e) return; if(e.data===YT.PlayerState.CUED){ updateFormatMode(); if(mode==='youtube') setControlsEnabled(true); try{ const d=player.getVideoData&&player.getVideoData(); const vid=d&&(d.video_id||d.videoId)||''; statusMsg(vid? '読み込み完了: '+vid : '読み込み完了'); }catch(_){ statusMsg('読み込み完了'); } const t=$('#toggleBtn'); if(t) t.textContent='再生'; } if(e.data===YT.PlayerState.PLAYING){ const t=$('#toggleBtn'); if(t) t.textContent='一時停止'; } if(e.data===YT.PlayerState.PAUSED || e.data===YT.PlayerState.ENDED){ const t=$('#toggleBtn'); if(t) t.textContent='再生'; } }
+    function onError(e){ statusMsg('エラー: '+(e&&e.data)); }
 
-    function onStateChange(e) {
-      if (!e) return;
-      if (e.data === YT.PlayerState.CUED) {
-        updateFormatMode();
-        if (mode === 'youtube') setControlsEnabled(true);
-        try {
-          const data = player.getVideoData && player.getVideoData();
-          const vid = data && (data.video_id || data.videoId) || '';
-          document.getElementById('status').textContent = vid ? ('読み込み完了: ' + vid) : '読み込み完了';
-        } catch(_) {
-          document.getElementById('status').textContent = '読み込み完了';
-        }
-        const t = document.getElementById('toggleBtn'); if (t) t.textContent = '再生';
-      }
-      if (e.data === YT.PlayerState.PLAYING) {
-        if (mode === 'youtube') { const t = document.getElementById('toggleBtn'); if (t) t.textContent = '一時停止'; }
-      }
-      if (e.data === YT.PlayerState.PAUSED || e.data === YT.PlayerState.ENDED) {
-        if (mode === 'youtube') { const t = document.getElementById('toggleBtn'); if (t) t.textContent = '再生'; }
-      }
-    }
+    function ensureCueOrLoad(id, phase){ try{ const st=player&&player.getPlayerState? player.getPlayerState():undefined; if(st===YT.PlayerState.CUED||st===YT.PlayerState.PAUSED||st===YT.PlayerState.PLAYING) return; }catch(_){} if(phase===0){ try{ player.loadVideoById(id);}catch(_){} setTimeout(()=>{ try{ player.pauseVideo(); }catch(_){} },500); setTimeout(()=>ensureCueOrLoad(id,1),1400);} else if(phase===1){ try{ player.cueVideoById(id);}catch(_){} } }
 
-    function onError(e) {
-      try {
-        console.error('YouTube IFrame API error:', e);
-        var code = e && e.data;
-        document.getElementById('status').textContent = 'エラー: ' + code;
-      } catch(_) {}
-    }
+    // ====== ファイルモード ======
+    fileMedia.addEventListener('loadedmetadata', ()=>{ isFileReady=true; updateFormatMode(); if(mode==='file'){ setControlsEnabled(true); statusMsg('読み込み完了: '+($('#fileName').textContent||'ファイル')); $('#toggleBtn').textContent='再生'; }});
+    fileMedia.addEventListener('play', ()=>{ if(mode==='file') $('#toggleBtn').textContent='一時停止'; });
+    fileMedia.addEventListener('pause', ()=>{ if(mode==='file') $('#toggleBtn').textContent='再生'; });
+    fileMedia.addEventListener('ended', ()=>{ if(mode==='file') $('#toggleBtn').textContent='再生'; });
 
-    // --- File media events ---
-    fileMedia.addEventListener('loadedmetadata', ()=>{
-      isFileReady = true;
-      updateFormatMode();
-      if (mode === 'file') {
-        setControlsEnabled(true);
-        document.getElementById('status').textContent = '読み込み完了: ' + (document.getElementById('fileName').textContent || 'ファイル');
-        document.getElementById('toggleBtn').textContent = '再生';
-      }
-    });
-    fileMedia.addEventListener('play', ()=>{ if (mode==='file') document.getElementById('toggleBtn').textContent='一時停止'; });
-    fileMedia.addEventListener('pause', ()=>{ if (mode==='file') document.getElementById('toggleBtn').textContent='再生'; });
-    fileMedia.addEventListener('ended', ()=>{ if (mode==='file') document.getElementById('toggleBtn').textContent='再生'; });
+    // ====== モード切替 ======
+    function setMode(newMode){ mode=newMode; const ytRow=$('#ytRow'); const fileName=$('#fileName'); const iframe=$('#playerWrap iframe'); if(mode==='youtube'){ ytRow.classList.remove('hidden'); fileName.classList.add('hidden'); if (iframe) iframe.style.display=''; fileMedia.style.display='none'; setControlsEnabled(isYTReady); statusMsg('未ロード'); } else { ytRow.classList.add('hidden'); fileName.classList.remove('hidden'); if (iframe) iframe.style.display='none'; fileMedia.style.display=''; setControlsEnabled(isFileReady); statusMsg('ファイル未選択'); } }
+    Array.from(document.getElementsByName('mode')).forEach(r=> r.addEventListener('change', e=> setMode(e.target.value)));
 
-    function updateFormatMode() {
-      let dur = 0;
-      try {
-        if (mode === 'youtube' && player && typeof player.getDuration === 'function') dur = player.getDuration();
-        if (mode === 'file' && fileMedia && isFinite(fileMedia.duration)) dur = fileMedia.duration;
-      } catch {}
-      useHMS = dur >= 3600;
-    }
+    // ====== ボタン類 ======
+    function handleLoad(){ if(mode!=='youtube'){ const fi=$('#fileInput'); if(fi) fi.click(); return; } const raw=$('#videoInput').value.trim(); const id=parseVideoId(raw); if(!id){ alert('URLまたは動画IDを入力してください'); return; } setControlsEnabled(false); statusMsg('読み込み中…'); if(isYTReady){ try{ player.cueVideoById(id);}catch(_){}} else { pendingVideoId=id; } setTimeout(()=>{ try{ ensureCueOrLoad(id,0);}catch(_){ } },1200); }
 
-    function getCurrentTime(){
-      if (mode === 'youtube' && player && typeof player.getCurrentTime === 'function') return player.getCurrentTime();
-      if (mode === 'file' && fileMedia) return fileMedia.currentTime || 0;
-      return 0;
-    }
+    const lb=$('#loadBtn'); if(lb) lb.addEventListener('click', handleLoad);
+    document.addEventListener('click', ev=>{ if(ev.target && ev.target.id==='loadBtn') handleLoad(); });
+    const vi=$('#videoInput'); if(vi) vi.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); handleLoad(); }});
 
-    function playMedia(){ if (mode==='youtube') player && player.playVideo(); else fileMedia && fileMedia.play(); }
-    function pauseMedia(){ if (mode==='youtube') player && player.pauseVideo(); else fileMedia && fileMedia.pause(); }
+    $('#toggleBtn').addEventListener('click', ()=>{ if(mode==='youtube'){ const st=player&&player.getPlayerState? player.getPlayerState():undefined; if(st===YT.PlayerState.PLAYING) player.pauseVideo(); else player.playVideo(); } else { if(fileMedia.paused) fileMedia.play(); else fileMedia.pause(); } });
+    $('#addBtn').addEventListener('click', ()=>{ const t=getCurrentTime(); if(!isFinite(t)) return; stamps.push({time:t,label:''}); rebuildList(); });
+    $('#copyBtn').addEventListener('click', async ()=>{ const txt=$('#preview').value; try{ await navigator.clipboard.writeText(txt); statusMsg('コピーしました'); }catch(_){ const ta=$('#preview'); ta.focus(); ta.select(); document.getSelection().removeAllRanges(); statusMsg('コピーに失敗。手動でCtrl/Cmd+Cでコピーしてください'); }});
+    $('#clearBtn').addEventListener('click', ()=>{ if(!stamps.length) return; if(!confirm('すべてのタイムスタンプを削除します。よろしいですか？')) return; stamps=[]; rebuildList(); });
 
-    function loopUpdateCurrentTime() {
-      const t = getCurrentTime();
-      document.getElementById('currentTime').textContent = isFinite(t) ? fmt(t) : '00:00';
-      requestAnimationFrame(loopUpdateCurrentTime);
-    }
+    window.addEventListener('keydown', (e)=>{ const tag=(e.target.tagName||'').toLowerCase(); if(tag==='input'||tag==='textarea') return; if(e.code==='Space'){ e.preventDefault(); if(mode==='youtube'){ const st=player.getPlayerState(); if(st===YT.PlayerState.PLAYING) player.pauseVideo(); else player.playVideo(); } else { if(fileMedia.paused) fileMedia.play(); else fileMedia.pause(); } } else if(e.key==='Enter'){ const t=getCurrentTime(); if(!isFinite(t)) return; stamps.push({time:t,label:''}); rebuildList(); } });
 
-    function setControlsEnabled(ready) {
-      const tgl = document.getElementById('toggleBtn'); if (tgl) tgl.disabled = !ready;
-      document.getElementById('addBtn').disabled = !ready;
-      document.getElementById('copyBtn').disabled = stamps.length === 0;
-      const clr = document.getElementById('clearBtn'); if (clr) clr.disabled = stamps.length === 0;
-    }
+    function parseVideoId(input){ if(!input) return ''; const raw=input.trim(); if(/^[a-zA-Z0-9_-]{10,}$/u.test(raw) && !raw.includes('http')) return raw; try{ const u=new URL(raw); const host=u.hostname.replace(/^www\./,''); const segs=u.pathname.split('/').filter(Boolean); if(host.includes('youtu.be')&&segs[0]) return segs[0]; const v=u.searchParams.get('v'); if(v) return v; if(segs[0]==='shorts'&&segs[1]) return segs[1]; if(segs[0]==='embed'&&segs[1]) return segs[1]; if(segs.length) return segs[segs.length-1]; }catch(_){ return raw; } return raw; }
 
-    function fmt(sec) {
-      if (!isFinite(sec)) return '--:--';
-      sec = Math.max(0, Math.floor(sec));
-      const h = Math.floor(sec / 3600);
-      const m = Math.floor((sec % 3600) / 60);
-      const s = sec % 60;
-      const mm = String(m).padStart(2,'0');
-      const ss = String(s).padStart(2,'0');
-      if (useHMS) { const hh = String(h).padStart(2,'0'); return `${hh}:${mm}:${ss}`; }
-      return `${mm}:${ss}`;
-    }
-
-    function rebuildList() {
-      stamps = stamps.map(x => (typeof x === 'number' ? { time: x, label: '' } : x));
-      const ul = document.getElementById('list');
-      ul.innerHTML = '';
-      stamps.sort((a,b)=>a.time-b.time);
-      for (const item of stamps) {
-        const li = document.createElement('li');
-        li.className = 'stamp';
-        const time = document.createElement('code');
-        time.className = 'time';
-        time.textContent = fmt(item.time);
-        const title = document.createElement('input');
-        title.className = 'title';
-        title.value = item.label || '';
-        title.placeholder = '（任意）見出し';
-        title.addEventListener('input', () => { item.label = title.value; buildPreview(); });
-        const del = document.createElement('button');
-        del.textContent = '削除';
-        del.addEventListener('click', () => { stamps = stamps.filter(x=>x!==item); rebuildList(); buildPreview(); });
-        li.append(time, title, del);
-        ul.appendChild(li);
-      }
-      document.getElementById('copyBtn').disabled = stamps.length === 0;
-      const clr = document.getElementById('clearBtn'); if (clr) clr.disabled = stamps.length === 0;
-      buildPreview();
-    }
-
-    function buildPreview() {
-      const lines = stamps
-        .sort((a,b)=>a.time-b.time)
-        .map(x => `${fmt(x.time)}${x.label ? ' ' + x.label : ''}`);
-      document.getElementById('preview').value = lines.join('\n');
-    }
-
-    function addCurrent() {
-      const t = getCurrentTime();
-      if (!isFinite(t)) return;
-      stamps.push({ time: t, label: '' });
-      rebuildList();
-    }
-
-    // 汎用読み込みハンドラ（YouTube / ファイル共通）
-    function handleLoad(){
-      if (mode !== 'youtube') {
-        const fi = document.getElementById('fileInput');
-        if (fi) fi.click();
-        return;
-      }
-      const inputEl = document.getElementById('videoInput');
-      const raw = inputEl ? inputEl.value.trim() : '';
-      const id = parseVideoId(raw);
-      if (!id) { alert('URLまたは動画IDを入力してください'); return; }
-      try {
-        setControlsEnabled(false);
-        document.getElementById('status').textContent = '読み込み中…';
-        if (isYTReady) { player.cueVideoById(id); } else { pendingVideoId = id; }
-        setTimeout(() => { try { ensureCueOrLoad(id, 0); } catch(_) {} }, 1200);
-      } catch (e) {
-        console.error(e);
-        document.getElementById('status').textContent = '読み込みエラー';
-      }
-    }
-
-    // --- UI ハンドラ ---
-    (function(){
-      const lb = document.getElementById('loadBtn');
-      if (lb) lb.addEventListener('click', handleLoad);
-      // フォールバック（イベント委任）
-      document.addEventListener('click', function(ev){ if (ev.target && ev.target.id === 'loadBtn') handleLoad(); });
-      // Enterで読み込み
-      const vi = document.getElementById('videoInput');
-      if (vi) vi.addEventListener('keydown', function(e){ if (e.key === 'Enter') { e.preventDefault(); handleLoad(); } });
-    })();
-      const raw = inputEl ? inputEl.value.trim() : '';
-      const id = parseVideoId(raw);
-      if (!id) { alert('URLまたは動画IDを入力してください'); return; }
-      try {
-        setControlsEnabled(false);
-        document.getElementById('status').textContent = '読み込み中…';
-        if (isYTReady) { player.cueVideoById(id); } else { pendingVideoId = id; }
-        // CUEDが来ない場合のフォールバック
-        setTimeout(() => { try { ensureCueOrLoad(id, 0); } catch(_) {} }, 1200);
-      } catch (e) {
-        console.error(e);
-        document.getElementById('status').textContent = '読み込みエラー';
-      }
-    });
-
-    document.getElementById('fileInput').addEventListener('change', (e) => {
-      const f = e.target.files && e.target.files[0];
-      if (!f) return;
-      if (!/\.(mp4|mp3|wav)$/i.test(f.name)) {
-        alert('対応形式は mp4 / mp3 / wav です');
-        return;
-      }
-      const fm = document.getElementById('fileMedia');
-      if (fileReadyURL) { URL.revokeObjectURL(fileReadyURL); fileReadyURL = null; }
-      fileReadyURL = URL.createObjectURL(f);
-      fm.src = fileReadyURL;
-      fm.load();
-      document.getElementById('fileName').textContent = f.name;
-      document.getElementById('status').textContent = '読み込み中…';
-    });
-
-    document.getElementById('toggleBtn').addEventListener('click', () => {
-      const st = mode==='youtube' && player && player.getPlayerState ? player.getPlayerState() : (fileMedia && (fileMedia.paused? 'PAUSED' : 'PLAYING'));
-      if (mode==='youtube') {
-        if (st === YT.PlayerState.PLAYING) player.pauseVideo(); else player.playVideo();
-      } else {
-        if (fileMedia.paused) fileMedia.play(); else fileMedia.pause();
-      }
-    });
-
-    document.getElementById('addBtn').addEventListener('click', addCurrent);
-
-    document.getElementById('copyBtn').addEventListener('click', async () => {
-      const txt = document.getElementById('preview').value;
-      try { await navigator.clipboard.writeText(txt); document.getElementById('status').textContent = 'コピーしました'; }
-      catch (e) {
-        const ta = document.getElementById('preview'); ta.focus(); ta.select(); document.getSelection().removeAllRanges();
-        document.getElementById('status').textContent = 'コピーに失敗。手動でCtrl/Cmd+Cでコピーしてください';
-      }
-    });
-
-    document.getElementById('clearBtn').addEventListener('click', () => {
-      if (!stamps.length) return;
-      if (!confirm('すべてのタイムスタンプを削除します。よろしいですか？')) return;
-      stamps = []; rebuildList();
-    });
-
-    // キーボードショートカット
-    window.addEventListener('keydown', (e) => {
-      const tag = (e.target.tagName || '').toLowerCase();
-      if (tag === 'input' || tag === 'textarea') return; // 入力中は無効
-      if (e.code === 'Space') { e.preventDefault(); const st = mode==='youtube' ? player.getPlayerState() : (fileMedia.paused? 'PAUSED':'PLAYING'); if (st === YT.PlayerState.PLAYING || st==='PLAYING') pauseMedia(); else playMedia(); }
-      else if (e.key === 'Enter') { addCurrent(); }
-    });
-
-    function parseVideoId(input) {
-      if (!input) return '';
-      const raw = input.trim();
-      if (/^[a-zA-Z0-9_-]{10,}$/u.test(raw) && !raw.includes('http')) return raw;
-      try {
-        const u = new URL(raw);
-        const host = u.hostname.replace(/^www\./, '');
-        const segs = u.pathname.split('/').filter(Boolean);
-        if (host.includes('youtu.be') && segs[0]) return segs[0];
-        const v = u.searchParams.get('v'); if (v) return v;
-        if (segs[0] === 'shorts' && segs[1]) return segs[1];
-        if (segs[0] === 'embed' && segs[1]) return segs[1];
-        if (segs.length) return segs[segs.length - 1];
-      } catch(_) { return raw; }
-      return raw;
-    }
-
-    // フォールバック: CUEDが来ない場合の対処（YouTube用）
-    function ensureCueOrLoad(id, phase) {
-      try {
-        const st = player && player.getPlayerState ? player.getPlayerState() : undefined;
-        if (st === YT.PlayerState.CUED || st === YT.PlayerState.PAUSED || st === YT.PlayerState.PLAYING) return;
-      } catch(_) {}
-      if (phase === 0) {
-        try { player.loadVideoById(id); } catch(_) {}
-        setTimeout(() => { try { player.pauseVideo(); } catch(_) {} }, 500);
-        setTimeout(() => ensureCueOrLoad(id, 1), 1400);
-      } else if (phase === 1) { try { player.cueVideoById(id); } catch(_) {} }
-    }
-
-    // 初期モード適用
+    // 初期化
     setMode('youtube');
-  </script>
+  })();
+</script>
 </body>
 </html>
