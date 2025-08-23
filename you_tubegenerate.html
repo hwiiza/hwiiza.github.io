@@ -182,7 +182,7 @@
     };
 
     function onReady(){
-      isYTReady=true; statusMsg('not loaded'); updateFormatMode(); setControlsEnabled(mode==='youtube');
+      isYTReady=true; statusMsg('未読み込み'); updateFormatMode(); setControlsEnabled(mode==='youtube');
       if (pendingVideoId){ try{ player.cueVideoById(pendingVideoId); }catch(e){} pendingVideoId=''; }
     }
     function onStateChange(e){
@@ -243,9 +243,9 @@
       if (ytC){ ytC.classList.toggle('hidden', mode!=='youtube'); ytC.style.display=(mode==='youtube')? '' : 'none'; }
       if (fC){  fC.classList.toggle('hidden',  mode!=='file');    fC.style.display=(mode==='file')? '' : 'none'; }
       if (mode==='youtube'){
-        destroyFileVideo(); var p1=$('#player'); if (p1) p1.style.display=''; setControlsEnabled(isYTReady); statusMsg('not loaded'); var t1=$('#toggleBtn'); if (t1) t1.textContent='再生';
+        destroyFileVideo(); var p1=$('#player'); if (p1) p1.style.display=''; setControlsEnabled(isYTReady); statusMsg('未読み込み'); var t1=$('#toggleBtn'); if (t1) t1.textContent='再生';
       } else {
-        var p2=$('#player'); if (p2) p2.style.display='none'; setControlsEnabled(isFileReady); if (!isFileReady) statusMsg('no file'); var t2=$('#toggleBtn'); if (t2) t2.textContent='再生';
+        var p2=$('#player'); if (p2) p2.style.display='none'; setControlsEnabled(isFileReady); if (!isFileReady) statusMsg('未読み込み'); var t2=$('#toggleBtn'); if (t2) t2.textContent='再生';
       }
     }
 
