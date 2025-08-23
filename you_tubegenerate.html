@@ -45,7 +45,7 @@
     </div>
     <div class="row" id="ytRow">
       <input id="videoInput" type="text" placeholder="YouTubeのURL または 動画ID" />
-      <button id="loadBtn" type="button">読み込み</button>
+      <button id="loadBtn" type="button" onclick="window._handleLoad && window._handleLoad()">読み込み</button>
     </div>
     <div class="row">
       <button id="toggleBtn" type="button" disabled>再生</button>
@@ -119,6 +119,8 @@
 
     // ====== YouTube IFrame API 読み込み ======
     (function loadYT(){ const tag=document.createElement('script'); tag.src='https://www.youtube.com/iframe_api'; tag.async=true; tag.onerror=()=>statusMsg('YouTube APIの読み込みに失敗しました'); document.head.appendChild(tag); setTimeout(()=>{ if(!(window.YT&&window.YT.Player)) statusMsg('YouTube APIが読み込まれていません'); }, 3500); })();
+    // グローバル経由のフォールバック呼び出し
+    window._handleLoad = handleLoad;
 
     window.onYouTubeIframeAPIReady = function(){
       player = new YT.Player('player', {
@@ -145,9 +147,11 @@
     Array.from(document.getElementsByName('mode')).forEach(r=> r.addEventListener('change', e=> setMode(e.target.value)));
 
     // ====== ボタン類 ======
-    function handleLoad(){ if(mode!=='youtube'){ const fi=$('#fileInput'); if(fi) fi.click(); return; } const raw=$('#videoInput').value.trim(); const id=parseVideoId(raw); if(!id){ alert('URLまたは動画IDを入力してください'); return; } setControlsEnabled(false); statusMsg('読み込み中…'); if(isYTReady){ try{ player.cueVideoById(id);}catch(_){}} else { pendingVideoId=id; } setTimeout(()=>{ try{ ensureCueOrLoad(id,0);}catch(_){ } },1200); }
+    function handleLoad(){
+      try{ console.log('[UI] handleLoad clicked, mode=', mode); }catch(_){ }
+ if(mode!=='youtube'){ const fi=$('#fileInput'); if(fi) fi.click(); return; } const raw=$('#videoInput').value.trim(); const id=parseVideoId(raw); if(!id){ alert('URLまたは動画IDを入力してください'); return; } setControlsEnabled(false); statusMsg('読み込み中…'); if(isYTReady){ try{ player.cueVideoById(id);}catch(_){}} else { pendingVideoId=id; } setTimeout(()=>{ try{ ensureCueOrLoad(id,0);}catch(_){ } },1200); }
 
-    const lb=$('#loadBtn'); if(lb) lb.addEventListener('click', handleLoad);
+    const lb=$('#loadBtn'); if(lb){ lb.addEventListener('click', handleLoad); lb.addEventListener('mousedown', handleLoad); lb.addEventListener('touchstart', handleLoad, {passive:true}); }
     document.addEventListener('click', ev=>{ if(ev.target && ev.target.id==='loadBtn') handleLoad(); });
     const vi=$('#videoInput'); if(vi) vi.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); handleLoad(); }});
 
