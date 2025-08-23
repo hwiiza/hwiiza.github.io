@@ -89,21 +89,21 @@
 
   // ===== State =====
   var mode = 'youtube';
-  var player = null;            // YouTube player
+  var player = null;
   var isYTReady = false;
   var pendingVideoId = '';
 
-  var fileEl = null;            // <video> element for file mode (created on demand)
-  var fileURL = null;           // Object URL for loaded file
+  var fileEl = null;    // created on demand
+  var fileURL = null;
   var isFileReady = false;
   var fileLabel = '';
 
-  var stamps = [];              // { time:number, label:string }
-  var useHMS = false;           // mm:ss (false) vs hh:mm:ss (true)
+  var stamps = [];      // { time:number, label:string }
+  var useHMS = false;   // false:mm:ss, true:hh:mm:ss
 
   // ===== Utils =====
   function $(sel){ return document.querySelector(sel); }
-  function statusMsg(msg){ var s = $('#status'); if (s) s.textContent = String(msg); }
+  function statusMsg(msg){ var s=$('#status'); if (s) s.textContent = String(msg); }
 
   function fmt(sec){
     if (!isFinite(sec)) return '--:--';
@@ -111,221 +111,163 @@
     var h = Math.floor(sec/3600);
     var m = Math.floor((sec%3600)/60);
     var s = sec % 60;
-    var mm = String(m).padStart(2,'0');
-    var ss = String(s).padStart(2,'0');
-    if (useHMS){ var hh = String(h).padStart(2,'0'); return hh+':'+mm+':'+ss; }
+    var mm = (m<10? '0'+m : ''+m);
+    var ss = (s<10? '0'+s : ''+s);
+    if (useHMS){ var hh = (h<10? '0'+h : ''+h); return hh+':'+mm+':'+ss; }
     return mm+':'+ss;
   }
 
-  // Abstracted current media interface
   var current = {
     play: function(){ if (mode==='youtube'){ try{ player.playVideo(); }catch(e){} } else if (fileEl){ try{ fileEl.play(); }catch(e){} } },
     pause: function(){ if (mode==='youtube'){ try{ player.pauseVideo(); }catch(e){} } else if (fileEl){ try{ fileEl.pause(); }catch(e){} } },
-    getTime: function(){ if (mode==='youtube'){ return (player && player.getCurrentTime)? player.getCurrentTime():0; } return (fileEl && fileEl.currentTime)||0; },
-    getDuration: function(){ if (mode==='youtube'){ return (player && player.getDuration)? player.getDuration():0; } return (fileEl && isFinite(fileEl.duration))? fileEl.duration:0; }
+    getTime: function(){ if (mode==='youtube'){ return player&&player.getCurrentTime? player.getCurrentTime():0; } return fileEl&&fileEl.currentTime? fileEl.currentTime:0; },
+    getDuration: function(){ if (mode==='youtube'){ return player&&player.getDuration? player.getDuration():0; } return (fileEl&&isFinite(fileEl.duration))? fileEl.duration:0; }
   };
 
   function updateFormatMode(){ try{ useHMS = current.getDuration() >= 3600; }catch(e){} }
 
   function setControlsEnabled(ready){
-    var tgl = $('#toggleBtn'); if (tgl) tgl.disabled = !ready;
-    var add = $('#addBtn'); if (add) add.disabled = !ready;
-    var copy = $('#copyBtn'); if (copy) copy.disabled = (stamps.length===0);
-    var clr = $('#clearBtn'); if (clr) clr.disabled = (stamps.length===0);
+    var tgl=$('#toggleBtn'); if (tgl) tgl.disabled=!ready;
+    var add=$('#addBtn'); if (add) add.disabled=!ready;
+    var copy=$('#copyBtn'); if (copy) copy.disabled=(stamps.length===0);
+    var clr=$('#clearBtn'); if (clr) clr.disabled=(stamps.length===0);
   }
 
   function rebuildList(){
-    stamps = stamps.map(function(x){ return (typeof x==='number') ? {time:x, label:''} : x; });
-    stamps.sort(function(a,b){ return a.time - b.time; });
-    var ul = $('#list'); if (!ul) return;
-    ul.innerHTML = '';
-    for (var i=0; i<stamps.length; i++){
+    stamps = stamps.map(function(x){ return (typeof x==='number')? {time:x,label:''}:x; });
+    stamps.sort(function(a,b){ return a.time-b.time; });
+    var ul = $('#list'); if (!ul) return; ul.innerHTML='';
+    for (var i=0;i<stamps.length;i++){
       (function(item){
-        var li = document.createElement('li'); li.className = 'stamp';
-        var time = document.createElement('code'); time.className = 'time'; time.textContent = fmt(item.time);
-        var title = document.createElement('input'); title.className='title'; title.value=item.label||''; title.placeholder='（任意）見出し';
-        title.addEventListener('input', function(){ item.label = title.value; buildPreview(); });
-        var del = document.createElement('button'); del.textContent = '削除';
-        del.addEventListener('click', function(){ stamps = stamps.filter(function(x){ return x!==item; }); rebuildList(); buildPreview(); });
+        var li=document.createElement('li'); li.className='stamp';
+        var time=document.createElement('code'); time.className='time'; time.textContent=fmt(item.time);
+        var title=document.createElement('input'); title.className='title'; title.value=item.label||''; title.placeholder='(optional)';
+        title.addEventListener('input', function(){ item.label=title.value; buildPreview(); });
+        var del=document.createElement('button'); del.textContent='削除';
+        del.addEventListener('click', function(){ stamps=stamps.filter(function(x){ return x!==item; }); rebuildList(); buildPreview(); });
         li.appendChild(time); li.appendChild(title); li.appendChild(del);
         ul.appendChild(li);
       })(stamps[i]);
     }
-    setControlsEnabled(mode==='youtube' ? isYTReady : isFileReady);
+    setControlsEnabled(mode==='youtube'? isYTReady : isFileReady);
     buildPreview();
   }
 
   function buildPreview(){
-    var lines = stamps.slice().sort(function(a,b){ return a.time-b.time; }).map(function(x){ return fmt(x.time) + (x.label ? ' ' + x.label : ''); });
-    var ta = $('#preview'); if (ta) ta.value = lines.join('
+    var lines = stamps.slice().sort(function(a,b){ return a.time-b.time; }).map(function(x){ return fmt(x.time)+(x.label? ' '+x.label : ''); });
+    var ta=$('#preview'); if (ta) ta.value = lines.join('
 ');
   }
 
   function loopUpdateCurrentTime(){
-    var t = current.getTime();
-    var el = $('#currentTime'); if (el) el.textContent = isFinite(t) ? fmt(t) : '00:00';
+    var t=current.getTime();
+    var el=$('#currentTime'); if (el) el.textContent = isFinite(t)? fmt(t) : '00:00';
     requestAnimationFrame(loopUpdateCurrentTime);
   }
 
   // ===== YouTube IFrame API =====
   (function loadYT(){
-    var tag = document.createElement('script');
-    tag.src = 'https://www.youtube.com/iframe_api';
-    tag.async = true;
-    tag.onerror = function(){ statusMsg('YouTube APIの読み込みに失敗しました'); };
+    var tag=document.createElement('script'); tag.src='https://www.youtube.com/iframe_api'; tag.async=true;
+    tag.onerror=function(){ statusMsg('YouTube API load failed'); };
     document.head.appendChild(tag);
-    setTimeout(function(){ if (!(window.YT && window.YT.Player)) statusMsg('YouTube APIが読み込まれていません'); }, 3500);
   })();
 
   window.onYouTubeIframeAPIReady = function(){
-    var origin = (location.protocol === 'file:') ? 'https://hwiiza.github.io' : location.origin;
+    var origin = (location.protocol==='file:') ? 'https://hwiiza.github.io' : location.origin;
     player = new YT.Player('player', {
-      height: '100%', width: '100%', videoId: '',
-      playerVars: { playsinline: 1, origin: origin, enablejsapi: 1 },
-      events: { 'onReady': onReady, 'onStateChange': onStateChange, 'onError': onError }
+      height:'100%', width:'100%', videoId:'',
+      playerVars:{ playsinline:1, origin: origin, enablejsapi:1 },
+      events:{ onReady:onReady, onStateChange:onStateChange, onError:onError }
     });
   };
 
   function onReady(){
-    isYTReady = true;
-    statusMsg('未ロード');
+    isYTReady=true; statusMsg('未ロード'); updateFormatMode(); setControlsEnabled(mode==='youtube');
     if (pendingVideoId){ try{ player.cueVideoById(pendingVideoId); }catch(e){} pendingVideoId=''; }
-    updateFormatMode();
-    if (mode==='youtube') setControlsEnabled(true);
   }
-
   function onStateChange(e){
     if (!e) return;
-    if (e.data === YT.PlayerState.CUED){
-      updateFormatMode();
-      if (mode==='youtube') setControlsEnabled(true);
-      try {
-        var d = player.getVideoData && player.getVideoData();
-        var title = d && d.title;
-        statusMsg(title ? ('読み込み完了: ' + title) : '読み込み完了');
-      } catch(err) { statusMsg('読み込み完了'); }
-      var t = $('#toggleBtn'); if (t && mode==='youtube') t.textContent = '再生';
-    }
-    if (e.data === YT.PlayerState.PLAYING){ var t1=$('#toggleBtn'); if (t1 && mode==='youtube') t1.textContent='一時停止'; }
-    if (e.data === YT.PlayerState.PAUSED || e.data === YT.PlayerState.ENDED){ var t2=$('#toggleBtn'); if (t2 && mode==='youtube') t2.textContent='再生'; }
+    if (e.data===YT.PlayerState.CUED){
+      updateFormatMode(); if (mode==='youtube') setControlsEnabled(true);
+      try{ var d=player.getVideoData&&player.getVideoData(); var title=d&&d.title; statusMsg(title? ('読み込み完了: '+title) : '読み込み完了'); }catch(_){ statusMsg('読み込み完了'); }
+      var t=$('#toggleBtn'); if (t&&mode==='youtube') t.textContent='再生';
+    } else if (e.data===YT.PlayerState.PLAYING){ var t1=$('#toggleBtn'); if (t1&&mode==='youtube') t1.textContent='一時停止'; }
+      else if (e.data===YT.PlayerState.PAUSED || e.data===YT.PlayerState.ENDED){ var t2=$('#toggleBtn'); if (t2&&mode==='youtube') t2.textContent='再生'; }
+  }
+  function onError(e){ statusMsg('エラー: '+(e&&e.data)); }
+
+  function ensureCueOrLoad(id,phase){
+    try{ var st=player&&player.getPlayerState? player.getPlayerState():undefined; if (st===YT.PlayerState.CUED||st===YT.PlayerState.PAUSED||st===YT.PlayerState.PLAYING) return; }catch(_){ }
+    if (phase===0){ try{ player.loadVideoById(id); }catch(_){ } setTimeout(function(){ try{ player.pauseVideo(); }catch(_){ } },500); setTimeout(function(){ ensureCueOrLoad(id,1); },1400); }
+    else if (phase===1){ try{ player.cueVideoById(id); }catch(_){ } }
   }
 
-  function onError(e){ statusMsg('エラー: ' + (e && e.data)); }
-
-  function ensureCueOrLoad(id, phase){
-    try {
-      var st = player && player.getPlayerState ? player.getPlayerState() : undefined;
-      if (st===YT.PlayerState.CUED || st===YT.PlayerState.PAUSED || st===YT.PlayerState.PLAYING) return;
-    } catch(e){}
-    if (phase===0){
-      try{ player.loadVideoById(id); }catch(e){}
-      setTimeout(function(){ try{ player.pauseVideo(); }catch(e){} }, 500);
-      setTimeout(function(){ ensureCueOrLoad(id,1); }, 1400);
-    } else if (phase===1){
-      try{ player.cueVideoById(id); }catch(e){}
-    }
-  }
-
-  // ===== File (on-demand video element) =====
+  // ===== File playback =====
   function createFileVideo(){
     if (fileEl) return fileEl;
-    var v = document.createElement('video');
-    v.setAttribute('playsinline','');
-    v.preload = 'metadata';
-    v.controls = true; // show native controls (seek bar etc.)
-    v.style.width = '100%';
-    v.style.height = '100%';
-    v.style.display = '';
-    v.id = 'fileMedia';
-    var wrap = $('#playerWrap'); wrap.appendChild(v);
-    v.addEventListener('loadedmetadata', function(){
-      isFileReady = true; updateFormatMode(); setControlsEnabled(true);
-      statusMsg('読み込み完了: ' + (fileLabel || v.currentSrc || 'ファイル'));
-      var t=$('#toggleBtn'); if (t && mode==='file') t.textContent='再生';
-    });
-    v.addEventListener('play', function(){ var t=$('#toggleBtn'); if (t && mode==='file') t.textContent='一時停止'; });
-    v.addEventListener('pause', function(){ var t=$('#toggleBtn'); if (t && mode==='file') t.textContent='再生'; });
-    v.addEventListener('ended', function(){ var t=$('#toggleBtn'); if (t && mode==='file') t.textContent='再生'; });
-    fileEl = v; return v;
+    var v=document.createElement('video'); v.setAttribute('playsinline',''); v.preload='metadata'; v.controls=true; v.style.width='100%'; v.style.height='100%'; v.id='fileMedia';
+    var wrap=$('#playerWrap'); wrap.appendChild(v);
+    v.addEventListener('loadedmetadata', function(){ isFileReady=true; updateFormatMode(); setControlsEnabled(true); statusMsg('読み込み完了: '+(fileLabel||v.currentSrc||'file')); var t=$('#toggleBtn'); if (t&&mode==='file') t.textContent='再生'; });
+    v.addEventListener('play', function(){ var t=$('#toggleBtn'); if (t&&mode==='file') t.textContent='一時停止'; });
+    v.addEventListener('pause', function(){ var t=$('#toggleBtn'); if (t&&mode==='file') t.textContent='再生'; });
+    v.addEventListener('ended', function(){ var t=$('#toggleBtn'); if (t&&mode==='file') t.textContent='再生'; });
+    fileEl=v; return v;
   }
-
   function destroyFileVideo(){
-    try {
-      if (fileEl){ try{ fileEl.pause(); }catch(e){}
-        if (fileURL){ try{ URL.revokeObjectURL(fileURL); }catch(e){} fileURL=null; }
-        fileEl.removeAttribute('src'); fileEl.load(); fileEl.remove(); fileEl=null;
-      }
-    } catch(e) {}
-    isFileReady = false; fileLabel = '';
+    try{ if (fileEl){ try{ fileEl.pause(); }catch(_){ } if (fileURL){ try{ URL.revokeObjectURL(fileURL); }catch(_){ } fileURL=null; } fileEl.removeAttribute('src'); fileEl.load(); fileEl.remove(); fileEl=null; } }catch(_){ }
+    isFileReady=false; fileLabel='';
   }
 
   // ===== Actions =====
   function loadYouTube(){
-    mode = 'youtube';
-    destroyFileVideo();
-    var p = $('#player'); if (p) p.style.display='';
-    var vi = $('#videoInput'); var raw = vi ? (vi.value||'').trim() : '';
-    var id = parseVideoId(raw);
+    mode='youtube'; destroyFileVideo(); var p=$('#player'); if (p) p.style.display='';
+    var vi=$('#videoInput'); var raw=vi? (vi.value||'').trim() : ''; var id=parseVideoId(raw);
     if (!id){ alert('URLまたは動画IDを入力してください'); return; }
     setControlsEnabled(false); statusMsg('読み込み中…');
-    if (isYTReady){ try{ player.cueVideoById(id); }catch(e){} } else { pendingVideoId = id; }
-    setTimeout(function(){ try{ ensureCueOrLoad(id,0); }catch(e){} }, 1200);
+    if (isYTReady){ try{ player.cueVideoById(id); }catch(_){ } } else { pendingVideoId=id; }
+    setTimeout(function(){ try{ ensureCueOrLoad(id,0); }catch(_){ } },1200);
   }
-
-  function selectFile(){ var fin = $('#fileInput'); if (!fin) return; fin.value=''; fin.click(); }
-
+  function selectFile(){ var fin=$('#fileInput'); if (!fin) return; fin.value=''; fin.click(); }
   function handleFileChosen(f){
     if (!f) return;
-    if (!/\.(mp4|mp3|wav)$/i.test(f.name)) { alert('対応形式は mp4 / mp3 / wav です'); return; }
-    mode = 'file'; fileLabel = f.name || '';
-    var p = $('#player'); if (p) p.style.display='none';
-    var v = createFileVideo();
-    if (fileURL){ try{ URL.revokeObjectURL(fileURL); }catch(e){} fileURL=null; }
-    fileURL = URL.createObjectURL(f);
-    v.src = fileURL; v.load(); statusMsg('読み込み中…');
+    var ok=/\.(mp4|mp3|wav)$/i.test(f.name);
+    if (!ok){ alert('対応形式は mp4 / mp3 / wav です'); return; }
+    mode='file'; fileLabel=f.name||''; var p=$('#player'); if (p) p.style.display='none';
+    var v=createFileVideo(); if (fileURL){ try{ URL.revokeObjectURL(fileURL); }catch(_){ } fileURL=null; }
+    fileURL=URL.createObjectURL(f); v.src=fileURL; v.load(); statusMsg('読み込み中…');
   }
 
-  // ===== Mode switch (radio) =====
+  // ===== Mode switch =====
   function setMode(newMode){
-    mode = newMode;
-    var ytC = $('#ytControls');
-    var fC  = $('#fileControls');
-    if (ytC){ ytC.classList.toggle('hidden', mode!=='youtube'); ytC.style.display = (mode==='youtube') ? '' : 'none'; }
-    if (fC){  fC.classList.toggle('hidden',  mode!=='file');    fC.style.display  = (mode==='file')    ? '' : 'none'; }
-    if (mode === 'youtube'){
-      destroyFileVideo();
-      var p1 = $('#player'); if (p1) p1.style.display='';
-      setControlsEnabled(isYTReady); statusMsg('未ロード');
-      var t1 = $('#toggleBtn'); if (t1) t1.textContent='再生';
+    mode=newMode; var ytC=$('#ytControls'); var fC=$('#fileControls');
+    if (ytC){ ytC.classList.toggle('hidden', mode!=='youtube'); ytC.style.display=(mode==='youtube')? '' : 'none'; }
+    if (fC){  fC.classList.toggle('hidden',  mode!=='file');    fC.style.display=(mode==='file')? '' : 'none'; }
+    if (mode==='youtube'){
+      destroyFileVideo(); var p1=$('#player'); if (p1) p1.style.display=''; setControlsEnabled(isYTReady); statusMsg('未ロード'); var t1=$('#toggleBtn'); if (t1) t1.textContent='再生';
     } else {
-      var p2 = $('#player'); if (p2) p2.style.display='none';
-      setControlsEnabled(isFileReady); if (!isFileReady) statusMsg('ファイル未選択');
-      var t2 = $('#toggleBtn'); if (t2) t2.textContent='再生';
+      var p2=$('#player'); if (p2) p2.style.display='none'; setControlsEnabled(isFileReady); if (!isFileReady) statusMsg('ファイル未選択'); var t2=$('#toggleBtn'); if (t2) t2.textContent='再生';
     }
   }
 
   // ===== Wire up UI =====
-  var modeRadios = document.getElementsByName('mode');
+  var modeRadios=document.getElementsByName('mode');
   for (var i=0;i<modeRadios.length;i++){ modeRadios[i].addEventListener('change', function(e){ setMode(e.target.value); }); }
-
-  var ytBtn = $('#ytLoadBtn'); if (ytBtn){ ytBtn.addEventListener('click', loadYouTube); }
-  var fsBtn = $('#fileSelectBtn'); if (fsBtn){ fsBtn.addEventListener('click', selectFile); }
-  var fin = $('#fileInput'); if (fin){ fin.addEventListener('change', function(e){ var f=e.target.files && e.target.files[0]; handleFileChosen(f); }); }
-  var vi = $('#videoInput'); if (vi){ vi.addEventListener('keydown', function(e){ if (e.key==='Enter'){ e.preventDefault(); loadYouTube(); } }); }
-
-  var tgl = $('#toggleBtn'); if (tgl){ tgl.addEventListener('click', function(){ if (mode==='youtube'){ var st = player && player.getPlayerState ? player.getPlayerState() : undefined; if (st===YT.PlayerState.PLAYING) current.pause(); else current.play(); } else { if (fileEl){ if (fileEl.paused) current.play(); else current.pause(); } } }); }
-
-  var addBtn = $('#addBtn'); if (addBtn){ addBtn.addEventListener('click', function(){ var t=current.getTime(); if(!isFinite(t)) return; stamps.push({time:t,label:''}); rebuildList(); }); }
-  var copyBtn = $('#copyBtn'); if (copyBtn){ copyBtn.addEventListener('click', function(){ var txt=$('#preview').value; navigator.clipboard.writeText(txt).then(function(){ statusMsg('コピーしました'); }).catch(function(){ try{ var ta=$('#preview'); ta.focus(); ta.select(); document.getSelection().removeAllRanges(); }catch(e){} statusMsg('コピーに失敗。手動でCtrl/Cmd+Cでコピーしてください'); }); }); }
-  var clrBtn = $('#clearBtn'); if (clrBtn){ clrBtn.addEventListener('click', function(){ if(!stamps.length) return; if(!confirm('すべてのタイムスタンプを削除します。よろしいですか？')) return; stamps=[]; rebuildList(); }); }
+  var ytBtn=$('#ytLoadBtn'); if (ytBtn) ytBtn.addEventListener('click', loadYouTube);
+  var fsBtn=$('#fileSelectBtn'); if (fsBtn) fsBtn.addEventListener('click', selectFile);
+  var fin=$('#fileInput'); if (fin) fin.addEventListener('change', function(e){ var f=e.target.files&&e.target.files[0]; handleFileChosen(f); });
+  var vi=$('#videoInput'); if (vi) vi.addEventListener('keydown', function(e){ if (e.key==='Enter'){ e.preventDefault(); loadYouTube(); } });
+  var tgl=$('#toggleBtn'); if (tgl) tgl.addEventListener('click', function(){ if (mode==='youtube'){ var st=player&&player.getPlayerState? player.getPlayerState():undefined; if (st===YT.PlayerState.PLAYING) current.pause(); else current.play(); } else { if (fileEl){ if (fileEl.paused) current.play(); else current.pause(); } } });
+  var addBtn=$('#addBtn'); if (addBtn) addBtn.addEventListener('click', function(){ var t=current.getTime(); if(!isFinite(t)) return; stamps.push({time:t,label:''}); rebuildList(); });
+  var copyBtn=$('#copyBtn'); if (copyBtn) copyBtn.addEventListener('click', function(){ var txt=$('#preview').value; navigator.clipboard.writeText(txt).then(function(){ statusMsg('コピーしました'); }).catch(function(){ try{ var ta=$('#preview'); ta.focus(); ta.select(); document.getSelection().removeAllRanges(); }catch(_){ } statusMsg('コピーに失敗。手動でコピーしてください'); }); });
+  var clrBtn=$('#clearBtn'); if (clrBtn) clrBtn.addEventListener('click', function(){ if(!stamps.length) return; if(!confirm('すべてのタイムスタンプを削除します。よろしいですか？')) return; stamps=[]; rebuildList(); });
 
   window.addEventListener('keydown', function(e){
-    var tag = (e.target.tagName||'').toLowerCase();
+    var tag=(e.target.tagName||'').toLowerCase();
     if (tag==='input' || tag==='textarea') return;
     if (e.code==='Space'){
       e.preventDefault();
       if (mode==='youtube'){
-        var st = player && player.getPlayerState ? player.getPlayerState() : undefined;
+        var st=player&&player.getPlayerState? player.getPlayerState():undefined;
         if (st===YT.PlayerState.PLAYING) current.pause(); else current.play();
       } else {
         if (fileEl){ if (fileEl.paused) current.play(); else current.pause(); }
@@ -346,7 +288,7 @@
       if (segs[0]==='shorts' && segs[1]) return segs[1];
       if (segs[0]==='embed' && segs[1]) return segs[1];
       if (segs.length) return segs[segs.length-1];
-    } catch(e) { return raw; }
+    } catch(_) { return raw; }
     return raw;
   }
 
