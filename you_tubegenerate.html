@@ -24,6 +24,12 @@
     .grid { display: grid; gap: 20px; grid-template-columns: 1fr; }
     @media (min-width: 900px) { .grid { grid-template-columns: 1fr 1fr; } }
     textarea { width: 100%; height: 140px; }
+      /* タイムスタンプ右側に一覧(プレビュー)を並べる */
+    .tsgrid { display: grid; gap: 12px; grid-template-columns: 1fr; align-items: start; }
+    @media (min-width: 700px) { .tsgrid { grid-template-columns: 1fr 1fr; } }
+    .tsgrid .previewArea { display: grid; gap: 8px; }
+    /* 長いリストでも使いやすいようにスクロール */
+    #list { max-height: 60vh; overflow: auto; }
   </style>
 </head>
 <body>
@@ -52,12 +58,18 @@
 
     <div class="stack">
       <h2>タイムスタンプ</h2>
-      <ul id="list"></ul>
-      <div class="row">
-        <button id="copyBtn" disabled>一覧をコピー</button>
-        <button id="clearBtn" disabled>すべて削除</button>
+      <div class="tsgrid">
+        <div class="listArea">
+          <ul id="list"></ul>
+        </div>
+        <div class="previewArea">
+          <div class="row">
+            <button id="copyBtn" disabled>一覧をコピー</button>
+            <button id="clearBtn" disabled>すべて削除</button>
+          </div>
+          <textarea id="preview" readonly placeholder="ここにコピー内容が表示されます"></textarea>
+        </div>
       </div>
-      <textarea id="preview" readonly placeholder="ここにコピー内容が表示されます"></textarea>
     </div>
   </div>
 
