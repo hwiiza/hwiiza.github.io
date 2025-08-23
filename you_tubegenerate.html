@@ -88,18 +88,32 @@
 
     function setMode(newMode){
       mode = newMode;
-      const ytRow = document.getElementById('ytRow');
+      const videoInputEl = document.getElementById('videoInput');
+      const loadBtn = document.getElementById('loadBtn');
       const fileName = document.getElementById('fileName');
       const fm = document.getElementById('fileMedia');
+      const iframe = document.querySelector('#playerWrap iframe');
+
       if (mode === 'youtube'){
-        ytRow.classList.remove('hidden');
+        // 入力欄は表示、ボタンは「読み込み」
+        videoInputEl.classList.remove('hidden');
+        if (loadBtn) loadBtn.textContent = '読み込み';
         fileName.classList.add('hidden');
         fm.style.display = 'none';
-        const iframe = document.querySelector('#playerWrap iframe');
         if (iframe) iframe.style.display = '';
         setControlsEnabled(isYTReady);
         document.getElementById('status').textContent = '未ロード';
       } else {
+        // 入力欄は隠すが、同じボタンを「ファイルを選択」として使う
+        videoInputEl.classList.add('hidden');
+        if (loadBtn) loadBtn.textContent = 'ファイルを選択';
+        fileName.classList.remove('hidden');
+        fm.style.display = '';
+        if (iframe) iframe.style.display = 'none';
+        setControlsEnabled(isFileReady);
+        document.getElementById('status').textContent = 'ファイル未選択';
+      }
+    } else {
         ytRow.classList.add('hidden');
         fileName.classList.remove('hidden');
         fm.style.display = '';
