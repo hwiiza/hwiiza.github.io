@@ -305,13 +305,38 @@
       rebuildList();
     }
 
-    // --- UI ハンドラ ---
-    document.getElementById('loadBtn').addEventListener('click', () => {
-      // このボタンは YouTube 用。モード再同期は行わない（クリック中に非表示化される問題を避ける）
-      if (mode !== 'youtube') return;
-      try { document.getElementById('status').textContent = '読み込みクリック: 処理開始'; } catch(_) {}
-
+    // 汎用読み込みハンドラ（YouTube / ファイル共通）
+    function handleLoad(){
+      if (mode !== 'youtube') {
+        const fi = document.getElementById('fileInput');
+        if (fi) fi.click();
+        return;
+      }
       const inputEl = document.getElementById('videoInput');
+      const raw = inputEl ? inputEl.value.trim() : '';
+      const id = parseVideoId(raw);
+      if (!id) { alert('URLまたは動画IDを入力してください'); return; }
+      try {
+        setControlsEnabled(false);
+        document.getElementById('status').textContent = '読み込み中…';
+        if (isYTReady) { player.cueVideoById(id); } else { pendingVideoId = id; }
+        setTimeout(() => { try { ensureCueOrLoad(id, 0); } catch(_) {} }, 1200);
+      } catch (e) {
+        console.error(e);
+        document.getElementById('status').textContent = '読み込みエラー';
+      }
+    }
+
+    // --- UI ハンドラ ---
+    (function(){
+      const lb = document.getElementById('loadBtn');
+      if (lb) lb.addEventListener('click', handleLoad);
+      // フォールバック（イベント委任）
+      document.addEventListener('click', function(ev){ if (ev.target && ev.target.id === 'loadBtn') handleLoad(); });
+      // Enterで読み込み
+      const vi = document.getElementById('videoInput');
+      if (vi) vi.addEventListener('keydown', function(e){ if (e.key === 'Enter') { e.preventDefault(); handleLoad(); } });
+    })();
       const raw = inputEl ? inputEl.value.trim() : '';
       const id = parseVideoId(raw);
       if (!id) { alert('URLまたは動画IDを入力してください'); return; }
