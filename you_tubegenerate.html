@@ -328,7 +328,23 @@
     var clrBtn = $('#clearBtn'); if (clrBtn){ clrBtn.addEventListener('click', function(){ if(!stamps.length) return; if(!confirm('すべてのタイムスタンプを削除します。よろしいですか？')) return; stamps=[]; rebuildList(); }); }
 
     window.addEventListener('keydown', function(e){
-      var tag=(e.target.tagName||'').toLowerCase();
+      var tag = (e.target.tagName || '').toLowerCase();
+      if (tag === 'input' || tag === 'textarea') return;
+      if (e.code === 'Space') {
+        e.preventDefault();
+        if (mode === 'youtube') {
+          var st = player && player.getPlayerState ? player.getPlayerState() : undefined;
+          if (st === YT.PlayerState.PLAYING) { current.pause(); } else { current.play(); }
+        } else {
+          if (fileEl) { if (fileEl.paused) { current.play(); } else { current.pause(); } }
+        }
+      } else if (e.key === 'Enter') {
+        var t = current.getTime();
+        if (!isFinite(t)) return;
+        stamps.push({ time: t, label: '' });
+        rebuildList();
+      }
+    });
       if (tag==='input' || tag==='textarea') return;
       if (e.code==='Space'){
         e.preventDefault();
