@@ -217,12 +217,14 @@
     // ===== File (on-demand video element) =====
     function createFileVideo(){
       if (fileEl) return fileEl;
+      // 動画/音声ファイル用のvideo要素（ネイティブコントロール有効）
       var v = document.createElement('video');
       v.setAttribute('playsinline','');
       v.preload = 'metadata';
+      v.controls = true; // ← ファイルモード: シークバー/再生ボタンなど手動操作可能にする
       v.style.width = '100%';
       v.style.height = '100%';
-      v.style.display = '';
+      v.style.display = ''; // controlsが見えるよう通常表示のまま
       v.id = 'fileMedia';
       var wrap = $('#playerWrap');
       wrap.appendChild(v);
