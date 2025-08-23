@@ -307,32 +307,23 @@
 
     // --- UI ハンドラ ---
     document.getElementById('loadBtn').addEventListener('click', () => {
-      // クリック即時にステータス更新（無反応対策）
+      // このボタンは YouTube 用。モード再同期は行わない（クリック中に非表示化される問題を避ける）
+      if (mode !== 'youtube') return;
       try { document.getElementById('status').textContent = '読み込みクリック: 処理開始'; } catch(_) {}
 
-      // ラジオの現在値でモードを再同期（UIと内部状態の齟齬対策）
-      const sel = document.querySelector("input[name='mode']:checked");
-      if (sel && sel.value !== mode) setMode(sel.value);
-
-      if (mode === 'youtube') {
-        const inputEl = document.getElementById('videoInput');
-        const raw = inputEl ? inputEl.value.trim() : '';
-        const id = parseVideoId(raw);
-        if (!id) { alert('URLまたは動画IDを入力してください'); return; }
-        try {
-          setControlsEnabled(false);
-          document.getElementById('status').textContent = '読み込み中…';
-          if (isYTReady) { player.cueVideoById(id); } else { pendingVideoId = id; }
-          // CUEDが来ない場合のフォールバック
-          setTimeout(() => { try { ensureCueOrLoad(id, 0); } catch(_) {} }, 1200);
-        } catch (e) {
-          console.error(e);
-          document.getElementById('status').textContent = '読み込みエラー';
-        }
-      } else {
-        // ファイル選択ダイアログを開く
-        const fi = document.getElementById('fileInput');
-        if (fi) fi.click();
+      const inputEl = document.getElementById('videoInput');
+      const raw = inputEl ? inputEl.value.trim() : '';
+      const id = parseVideoId(raw);
+      if (!id) { alert('URLまたは動画IDを入力してください'); return; }
+      try {
+        setControlsEnabled(false);
+        document.getElementById('status').textContent = '読み込み中…';
+        if (isYTReady) { player.cueVideoById(id); } else { pendingVideoId = id; }
+        // CUEDが来ない場合のフォールバック
+        setTimeout(() => { try { ensureCueOrLoad(id, 0); } catch(_) {} }, 1200);
+      } catch (e) {
+        console.error(e);
+        document.getElementById('status').textContent = '読み込みエラー';
       }
     });
 
