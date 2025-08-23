@@ -45,11 +45,11 @@
     </div>
     <div class="row" id="ytRow">
       <input id="videoInput" type="text" placeholder="YouTubeのURL または 動画ID" />
-      <button id="loadBtn">読み込み</button>
+      <button id="loadBtn" type="button">読み込み</button>
     </div>
     <div class="row">
-      <button id="toggleBtn" disabled>再生</button>
-      <button id="addBtn" disabled>現在位置でタイムスタンプ追加</button>
+      <button id="toggleBtn" type="button" disabled>再生</button>
+      <button id="addBtn" type="button" disabled>現在位置でタイムスタンプ追加</button>
       <span id="status" class="pill">未ロード</span>
     </div>
     <div class="row">
@@ -73,8 +73,8 @@
         </div>
         <div class="previewArea">
           <div class="row">
-            <button id="copyBtn" disabled>一覧をコピー</button>
-            <button id="clearBtn" disabled>すべて削除</button>
+            <button id="copyBtn" type="button" disabled>一覧をコピー</button>
+            <button id="clearBtn" type="button" disabled>すべて削除</button>
           </div>
           <textarea id="preview" readonly placeholder="ここにコピー内容が表示されます"></textarea>
         </div>
@@ -128,9 +128,9 @@
       }
     }
 
-    document.getElementsByName('mode').forEach(r => r.addEventListener('change', (e)=>{
-      setMode(e.target.value);
-    }));
+    Array.from(document.getElementsByName('mode')).forEach(function(radio){
+      radio.addEventListener('change', function(e){ setMode(e.target.value); });
+    });
 
     // --- YouTube IFrame API ロード（堅牢化） ---
     (function loadYT(){
