@@ -66,7 +66,7 @@
         <div id="player"></div>
         <!-- ファイル再生用の <video> は必要時に生成・破棄。普段は存在しないので YouTube を妨げません -->
       </div>
-      <div class="hint">スペースキー: 再生/一時停止、Enter: 現在位置を追加</div>
+      <div class="hint">スペースキー: 再生/一時停止</div>
     </div>
 
     <div class="stack">
@@ -317,7 +317,19 @@
     var copyBtn = $('#copyBtn'); if (copyBtn){ copyBtn.addEventListener('click', function(){ var txt=$('#preview').value; navigator.clipboard.writeText(txt).then(function(){ statusMsg('コピーしました'); }).catch(function(){ try{ var ta=$('#preview'); ta.focus(); ta.select(); document.getSelection().removeAllRanges(); }catch(e){} statusMsg('コピーに失敗。手動でCtrl/Cmd+Cでコピーしてください'); }); }); }
     var clrBtn = $('#clearBtn'); if (clrBtn){ clrBtn.addEventListener('click', function(){ if(!stamps.length) return; if(!confirm('すべてのタイムスタンプを削除します。よろしいですか？')) return; stamps=[]; rebuildList(); }); }
 
-    window.addEventListener('keydown', function(e){ var tag=(e.target.tagName||'').toLowerCase(); if (tag==='input' || tag==='textarea') return; if (e.code==='Space'){ e.preventDefault(); var t = current.getTime(); if (isFinite(t)) { // toggle
+    window.addEventListener('keydown', function(e){
+      var tag=(e.target.tagName||'').toLowerCase();
+      if (tag==='input' || tag==='textarea') return;
+      if (e.code==='Space'){
+        e.preventDefault();
+        if (mode==='youtube'){
+          var st = player && player.getPlayerState ? player.getPlayerState() : undefined;
+          if (st===YT.PlayerState.PLAYING) current.pause(); else current.play();
+        } else {
+          if (fileEl){ if (fileEl.paused) current.play(); else current.pause(); }
+        }
+      }
+    }); if (tag==='input' || tag==='textarea') return; if (e.code==='Space'){ e.preventDefault(); var t = current.getTime(); if (isFinite(t)) { // toggle
         if (mode==='youtube'){ var st = player && player.getPlayerState ? player.getPlayerState() : undefined; if (st===YT.PlayerState.PLAYING) current.pause(); else current.play(); }
         else { if (fileEl){ if (fileEl.paused) current.play(); else current.pause(); } }
       }
