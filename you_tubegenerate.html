@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>YouTube Timestamp（GH Pages Safe Build）</title>
+  <title>YouTube タイムスタンプ作成ツール</title>
   <style>
     :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, "Hiragino Kaku Gothic ProN", Meiryo, sans-serif; }
     body { margin: 24px; }
@@ -24,28 +24,25 @@
     .grid { display: grid; gap: 20px; grid-template-columns: 1fr; }
     @media (min-width: 900px) { .grid { grid-template-columns: 1fr 1fr; } }
     textarea { width: 100%; height: 140px; }
-    .log { white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background:#fafafa; border:1px dashed #ddd; border-radius:8px; padding:8px; }
   </style>
 </head>
 <body>
-  <h1>YouTube Timestamp（GH Pages Safe Build）</h1>
+  <h1>YouTube タイムスタンプ作成ツール</h1>
 
   <div class="stack" style="margin-bottom:16px">
     <div class="row">
       <input id="videoInput" type="text" placeholder="YouTubeのURL または 動画ID" />
       <button id="loadBtn">読み込み</button>
-      <button id="demoBtn" class="hint">デモを読み込み</button>
-      <span id="status" class="pill">未ロード</span>
+      <span class="hint">例: https://www.youtube.com/watch?v=dQw4w9WgXcQ</span>
     </div>
     <div class="row">
       <button id="playBtn" disabled>再生</button>
       <button id="pauseBtn" disabled>一時停止</button>
       <button id="addBtn" disabled>現在位置でタイムスタンプ追加</button>
-      <button id="snapPauseBtn" disabled>最終停止位置で追加</button>
+      <span id="status" class="pill">未ロード</span>
     </div>
     <div class="row">
       <span>現在位置: <strong id="currentTime" class="time">00:00</strong></span>
-      <span>／ 最終停止位置: <strong id="pausedAt" class="time">--:--</strong></span>
     </div>
   </div>
 
@@ -53,7 +50,6 @@
     <div class="stack">
       <div id="playerWrap"><div id="player"></div></div>
       <div class="hint">スペースキー: 再生/一時停止、Enter: 現在位置を追加</div>
-      <div id="debug" class="log hint"></div>
     </div>
 
     <div class="stack">
@@ -67,109 +63,118 @@
   </div>
 
   <script>
-    // --- YouTube IFrame API ---
-    (function loadYT(){
-      const s = document.createElement('script');
-      s.src = 'https://www.youtube.com/iframe_api';
-      s.async = true;
-      s.onerror = () => statusMsg('YouTube APIの読み込みに失敗しました');
-      document.head.appendChild(s);
-      setTimeout(() => {
-        if (!(window.YT && window.YT.Player)) statusMsg('YouTube APIが読み込まれていません（拡張機能やネットワーク設定をご確認ください）');
-      }, 3500);
-    })();
+    // --- YouTube IFrame API ロード（堅牢化） ---
+    const tag = document.createElement('script');
+    tag.src = 'https://www.youtube.com/iframe_api';
+    tag.async = true;
+    tag.onerror = () => {
+      try { document.getElementById('status').textContent = 'YouTube APIの読み込みに失敗しました'; } catch(_) {}
+    };
+    document.head.appendChild(tag);
+    setTimeout(() => {
+      if (!(window.YT && window.YT.Player)) {
+        try { document.getElementById('status').textContent = 'YouTube APIが読み込まれていません（拡張機能やネットワーク設定をご確認ください）'; } catch(_) {}
+      }
+    }, 3500);
 
     let player = null;
     let stamps = []; // { time:number, label:string }
-    let lastPausedAt = null;
     let useHMS = false; // 総再生時間でフォーマット切替
-    let isReady = false;
+    let isReady = false; // プレイヤー準備状態
     let pendingVideoId = '';
 
-    // ログ & ステータス
-    function statusMsg(msg){
-      const el = document.getElementById('status');
-      if (el) el.textContent = msg;
-      const dbg = document.getElementById('debug');
-      if (dbg) dbg.textContent += `[${new Date().toLocaleTimeString()}] ${msg}\n`;
-      console.log('[YT]', msg);
-    }
-
-    // IFrame API Ready (must be global)
+    // YouTube IFrame API コールバック（グローバル）
     window.onYouTubeIframeAPIReady = function() {
-      statusMsg('IFrame API ready');
       player = new YT.Player('player', {
-        width: '100%', height: '100%',
+        height: '100%',
+        width: '100%',
         videoId: '',
-        playerVars: { playsinline: 1, origin: location.origin, enablejsapi: 1 },
-        events: { onReady, onStateChange, onError }
+        host: 'https://www.youtube-nocookie.com',
+        playerVars: (function(){ const pv = { playsinline: 1 }; if (/^https?:$/i.test(location.protocol)) pv.origin = location.origin; return pv; })(),
+        events: {
+          'onReady': onReady,
+          'onStateChange': onStateChange,
+          'onError': onError,
+        }
       });
     };
 
-    function onReady(){
+    function onReady() {
       isReady = true;
-      statusMsg('Player ready');
-      if (pendingVideoId) { try{ player.cueVideoById(pendingVideoId); }catch(e){} pendingVideoId=''; }
+      if (pendingVideoId) {
+        try { player.cueVideoById(pendingVideoId); } catch(_) {}
+        pendingVideoId = '';
+      }
       updateFormatMode();
       loopUpdateCurrentTime();
     }
 
-    function onStateChange(e){
+    function onStateChange(e) {
       if (!e) return;
-      statusMsg('State: ' + e.data);
-      if (e.data === YT.PlayerState.PAUSED){
-        lastPausedAt = player.getCurrentTime();
-        document.getElementById('pausedAt').textContent = fmt(lastPausedAt);
-      }
-      if (e.data === YT.PlayerState.CUED){
+      if (e.data === YT.PlayerState.CUED) {
         updateFormatMode();
         setControlsEnabled(true);
-        const data = player.getVideoData && player.getVideoData();
-        const vid = data && (data.video_id || data.videoId) || '';
-        statusMsg(vid ? ('読み込み完了: ' + vid) : '読み込み完了');
+        try {
+          const data = player.getVideoData && player.getVideoData();
+          const vid = data && (data.video_id || data.videoId) || '';
+          document.getElementById('status').textContent = vid ? ('読み込み完了: ' + vid) : '読み込み完了';
+        } catch(_) {
+          document.getElementById('status').textContent = '読み込み完了';
+        }
       }
     }
 
-    function onError(e){
-      statusMsg('エラー: ' + (e && e.data));
+    function onError(e) {
+      try {
+        console.error('YouTube IFrame API error:', e);
+        var code = e && e.data;
+        document.getElementById('status').textContent = 'エラー: ' + code;
+      } catch(_) {}
     }
 
-    function updateFormatMode(){
-      try{ useHMS = player.getDuration() >= 3600; }catch(e){}
+    function updateFormatMode() {
+      try {
+        const dur = player.getDuration();
+        useHMS = dur >= 3600; // 60分以上なら hh:mm:ss
+      } catch {}
     }
 
-    function loopUpdateCurrentTime(){
-      if (player && typeof player.getCurrentTime === 'function'){
+    function loopUpdateCurrentTime() {
+      if (player && typeof player.getCurrentTime === 'function') {
         const t = player.getCurrentTime();
         document.getElementById('currentTime').textContent = isFinite(t) ? fmt(t) : '00:00';
       }
       requestAnimationFrame(loopUpdateCurrentTime);
     }
 
-    function setControlsEnabled(ready){
+    function setControlsEnabled(ready) {
       document.getElementById('playBtn').disabled = !ready;
       document.getElementById('pauseBtn').disabled = !ready;
-      document.getElementById('addBtn').disabled = !ready;
-      document.getElementById('snapPauseBtn').disabled = !ready;
-      document.getElementById('copyBtn').disabled = stamps.length === 0;
+      document.getElementById('addBtn').disabled = !ready;      document.getElementById('copyBtn').disabled = stamps.length === 0;
     }
 
-    function fmt(sec){
+    function fmt(sec) {
       if (!isFinite(sec)) return '--:--';
       sec = Math.max(0, Math.floor(sec));
-      const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
-      const mm = String(m).padStart(2, '0');
-      const ss = String(s).padStart(2, '0');
-      if (useHMS){ const hh = String(h).padStart(2, '0'); return `${hh}:${mm}:${ss}`; }
+      const h = Math.floor(sec / 3600);
+      const m = Math.floor((sec % 3600) / 60);
+      const s = sec % 60;
+      const mm = String(m).padStart(2,'0');
+      const ss = String(s).padStart(2,'0');
+      if (useHMS) {
+        const hh = String(h).padStart(2,'0');
+        return `${hh}:${mm}:${ss}`;
+      }
       return `${mm}:${ss}`;
     }
 
-    function rebuildList(){
-      stamps = stamps.map(x => (typeof x === 'number' ? { time:x, label:'' } : x));
+    function rebuildList() {
+      // 互換: 数値だけの古い要素が残っていたらオブジェクト化
+      stamps = stamps.map(x => (typeof x === 'number' ? { time: x, label: '' } : x));
       stamps.sort((a,b)=>a.time-b.time);
       const ul = document.getElementById('list');
       ul.innerHTML = '';
-      for (const item of stamps){
+      for (const item of stamps) {
         const li = document.createElement('li');
         li.className = 'stamp';
         const time = document.createElement('code');
@@ -182,7 +187,11 @@
         title.addEventListener('input', () => { item.label = title.value; buildPreview(); });
         const del = document.createElement('button');
         del.textContent = '削除';
-        del.addEventListener('click', () => { stamps = stamps.filter(x=>x!==item); rebuildList(); buildPreview(); });
+        del.addEventListener('click', () => {
+          stamps = stamps.filter(x=>x!==item);
+          rebuildList();
+          buildPreview();
+        });
         li.append(time, title, del);
         ul.appendChild(li);
       }
@@ -190,12 +199,14 @@
       buildPreview();
     }
 
-    function buildPreview(){
-      const lines = stamps.sort((a,b)=>a.time-b.time).map(x => `${fmt(x.time)}${x.label ? ' ' + x.label : ''}`);
+    function buildPreview() {
+      const lines = stamps
+        .sort((a,b)=>a.time-b.time)
+        .map(x => `${fmt(x.time)}${x.label ? ' ' + x.label : ''}`);
       document.getElementById('preview').value = lines.join('\n');
     }
 
-    function addCurrent(){
+    function addCurrent() {
       if (!player) return;
       const t = player.getCurrentTime();
       if (!isFinite(t)) return;
@@ -203,67 +214,69 @@
       rebuildList();
     }
 
-    function addFromPaused(){
-      if (lastPausedAt == null) return;
-      stamps.push({ time: lastPausedAt, label: '' });
-      rebuildList();
-    }
-
-    // --- UI handlers ---
+    // --- UI ハンドラ ---
     document.getElementById('loadBtn').addEventListener('click', () => {
       const input = document.getElementById('videoInput').value.trim();
       const id = parseVideoId(input);
       if (!id) { alert('URLまたは動画IDを入力してください'); return; }
-      if (isReady) { try { player.cueVideoById(id); } catch(e){} } else { pendingVideoId = id; }
+      if (isReady) {
+        try { player.cueVideoById(id); } catch(_) {}
+      } else {
+        pendingVideoId = id; // onReadyでcue
+      }
       setControlsEnabled(false);
-      statusMsg('読み込み中…');
-      // 2秒でCUED来ない場合のフォールバック
-      setTimeout(() => {
-        const st = player && player.getPlayerState ? player.getPlayerState() : undefined;
-        if (st !== YT.PlayerState.CUED && st !== YT.PlayerState.PAUSED && st !== YT.PlayerState.PLAYING){
-          try { player.loadVideoById(id); } catch(e){}
-          setTimeout(() => { try { player.pauseVideo(); } catch(e){} }, 500);
-        }
-      }, 2000);
-    });
-
-    document.getElementById('demoBtn').addEventListener('click', () => {
-      document.getElementById('videoInput').value = 'https://www.youtube.com/watch?v=UAEs7HiELtQ';
-      document.getElementById('loadBtn').click();
+      document.getElementById('status').textContent = '読み込み中…';
     });
 
     document.getElementById('playBtn').addEventListener('click', () => player && player.playVideo());
     document.getElementById('pauseBtn').addEventListener('click', () => player && player.pauseVideo());
     document.getElementById('addBtn').addEventListener('click', addCurrent);
-    document.getElementById('snapPauseBtn').addEventListener('click', addFromPaused);
-
     document.getElementById('copyBtn').addEventListener('click', async () => {
       const txt = document.getElementById('preview').value;
-      try { await navigator.clipboard.writeText(txt); statusMsg('コピーしました'); }
-      catch { statusMsg('コピーに失敗。手動でCtrl/Cmd+Cでコピーしてください'); }
+      try {
+        await navigator.clipboard.writeText(txt);
+        document.getElementById('status').textContent = 'コピーしました';
+      } catch (e) {
+        const ta = document.getElementById('preview');
+        ta.focus();
+        ta.select();
+        document.getSelection().removeAllRanges();
+        document.getElementById('status').textContent = 'コピーに失敗。手動でCtrl/Cmd+Cでコピーしてください';
+      }
     });
 
+    // キーボードショートカット
     window.addEventListener('keydown', (e) => {
       const tag = (e.target.tagName || '').toLowerCase();
-      if (tag === 'input' || tag === 'textarea') return;
-      if (e.code === 'Space') { e.preventDefault(); const st = player.getPlayerState(); if (st === YT.PlayerState.PLAYING) player.pauseVideo(); else player.playVideo(); }
-      else if (e.key === 'Enter') { addCurrent(); }
+      if (tag === 'input' || tag === 'textarea') return; // 入力中は無効
+      if (e.code === 'Space') {
+        e.preventDefault();
+        const st = player.getPlayerState();
+        if (st === YT.PlayerState.PLAYING) player.pauseVideo();
+        else player.playVideo();
+      } else if (e.key === 'Enter') {
+        addCurrent();
+      }
     });
 
-    function parseVideoId(input){
+    function parseVideoId(input) {
       if (!input) return '';
       const raw = input.trim();
+      // すでにIDらしい場合（11文字前後、英数-_）はそのまま
       if (/^[a-zA-Z0-9_-]{10,}$/u.test(raw) && !raw.includes('http')) return raw;
       try {
         const u = new URL(raw);
         const host = u.hostname.replace(/^www\./, '');
         const segs = u.pathname.split('/').filter(Boolean);
         if (host.includes('youtu.be') && segs[0]) return segs[0];
-        const v = u.searchParams.get('v'); if (v) return v;
+        const v = u.searchParams.get('v');
+        if (v) return v;
         if (segs[0] === 'shorts' && segs[1]) return segs[1];
         if (segs[0] === 'embed' && segs[1]) return segs[1];
         if (segs.length) return segs[segs.length - 1];
-      } catch { return raw; }
+      } catch(_) {
+        return raw;
+      }
       return raw;
     }
   </script>
