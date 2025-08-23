@@ -18,7 +18,9 @@
     .hint { color: #666; font-size: 12px; }
     .pill { background:#f5f5f5; border-radius:999px; padding:4px 8px; }
     ul { list-style: none; padding: 0; margin: 0; }
-    li.stamp { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; padding: 8px; border: 1px solid #eee; border-radius: 10px; margin-top: 8px; }
+    li.stamp {$1margin-top: 0;$2}
+    /* 2個目以降だけ上マージンを付与して上詰めにする */
+    #list .stamp + .stamp { margin-top: 8px; }
     .title { width: 100%; padding: 6px 8px; border: 1px solid #ddd; border-radius: 8px; }
     .stack { display: grid; gap: 8px; }
     .grid { display: grid; gap: 20px; grid-template-columns: 1fr; }
