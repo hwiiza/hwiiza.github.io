@@ -174,8 +174,9 @@
     window.onYouTubeIframeAPIReady = function(){
       var origin = (location.protocol==='file:') ? 'https://hwiiza.github.io' : location.origin;
       player = new YT.Player('player', {
-        height:'100%', width:'100%', videoId:'',
-        playerVars:{ playsinline:1, origin: origin, enablejsapi:1 },
+      height:'100%', width:'100%', videoId:'',
+      host:'https://www.youtube.com',
+      playerVars:{ playsinline:1, origin: location.origin, enablejsapi:1 },
         events:{ onReady:onReady, onStateChange:onStateChange, onError:onError }
       });
     };
