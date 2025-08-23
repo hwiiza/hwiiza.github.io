@@ -238,9 +238,38 @@
     }
 
     // ===== Mode switch =====
-    function setMode(newMode){
-      mode=newMode; var ytC=$('#ytControls'); var fC=$('#fileControls');
-      if (ytC){ ytC.classList.toggle('hidden', mode!=='youtube'); ytC.style.display=(mode==='youtube')? '' : 'none'; }
+  function setMode(newMode){
+    mode=newMode; var ytC=$('#ytControls'); var fC=$('#fileControls');
+    if (ytC){ ytC.classList.toggle('hidden', mode!=='youtube'); ytC.style.display=(mode==='youtube')? '' : 'none'; }
+    if (fC){  fC.classList.toggle('hidden',  mode!=='file');    fC.style.display=(mode==='file')? '' : 'none'; }
+    if (mode==='youtube'){
+      destroyFileVideo(); var p1=$('#player'); if (p1) p1.style.display=''; setControlsEnabled(isYTReady); statusMsg('未読み込み'); var t1=$('#toggleBtn'); if (t1) t1.textContent='再生';
+    } else {
+      var p2=$('#player'); if (p2) p2.style.display='none'; setControlsEnabled(isFileReady); if (!isFileReady) statusMsg('未読み込み'); var t2=$('#toggleBtn'); if (t2) t2.textContent='再生';
+    }
+  }
+
+  // 変更要求（警告付き）
+  function requestModeChange(nextMode){
+    if (nextMode===mode) return;
+    if (stamps && stamps.length>0){
+      var ok = confirm('モードを切り替えると作成済みのタイムスタンプはすべて削除されます。よろしいですか？');
+      if (!ok){
+        // 選択を元に戻す
+        try{
+          var prev = document.querySelector('input[name="mode"][value="'+mode+'"]');
+          if (prev) prev.checked = true;
+          var other = document.querySelector('input[name="mode"][value="'+nextMode+'"]');
+          if (other) other.checked = false;
+        }catch(_){ }
+        return;
+      }
+      // OK: 全削除
+      stamps = [];
+      rebuildList();
+    }
+    setMode(nextMode);
+  }
       if (fC){  fC.classList.toggle('hidden',  mode!=='file');    fC.style.display=(mode==='file')? '' : 'none'; }
       if (mode==='youtube'){
         destroyFileVideo(); var p1=$('#player'); if (p1) p1.style.display=''; setControlsEnabled(isYTReady); statusMsg('未読み込み'); var t1=$('#toggleBtn'); if (t1) t1.textContent='再生';
@@ -251,7 +280,7 @@
 
     // ===== Wire up UI =====
     var modeRadios=document.getElementsByName('mode');
-    for (var i=0;i<modeRadios.length;i++){ modeRadios[i].addEventListener('change', function(e){ setMode(e.target.value); }); }
+  for (var i=0;i<modeRadios.length;i++){ modeRadios[i].addEventListener('change', function(e){ requestModeChange(e.target.value); }); }
     var ytBtn=$('#ytLoadBtn'); if (ytBtn) ytBtn.addEventListener('click', loadYouTube);
     var fsBtn=$('#fileSelectBtn'); if (fsBtn) fsBtn.addEventListener('click', selectFile);
     var fin=$('#fileInput'); if (fin) fin.addEventListener('change', function(e){ var f=e.target.files&&e.target.files[0]; handleFileChosen(f); });
