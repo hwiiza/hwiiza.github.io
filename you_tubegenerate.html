@@ -98,6 +98,7 @@
     var fileEl = null;    // 動的生成する <video>
     var fileURL = null;   // Object URL
     var isFileReady = false;
+    var fileLabel = ''; // ファイル名表示用
 
     var stamps = [];      // { time:number, label:string }
     var useHMS = false;   // mm:ss vs hh:mm:ss
@@ -198,7 +199,7 @@
       if (e.data === YT.PlayerState.CUED){
         updateFormatMode();
         if (mode==='youtube') setControlsEnabled(true);
-        try{ var d = player.getVideoData && player.getVideoData(); var vid = d && (d.video_id || d.videoId) || ''; statusMsg(vid? ('読み込み完了: '+vid) : '読み込み完了'); }catch(err){ statusMsg('読み込み完了'); }
+        try{ var d = player.getVideoData && player.getVideoData(); var title = d && d.title; statusMsg(title ? ('読み込み完了: ' + title) : '読み込み完了'); }catch(err){ statusMsg('読み込み完了'); }
         var t = $('#toggleBtn'); if (t && mode==='youtube') t.textContent = '再生';
       }
       if (e.data === YT.PlayerState.PLAYING){ var t1=$('#toggleBtn'); if (t1 && mode==='youtube') t1.textContent='一時停止'; }
@@ -226,7 +227,7 @@
       var wrap = $('#playerWrap');
       wrap.appendChild(v);
       // Events
-      v.addEventListener('loadedmetadata', function(){ isFileReady = true; updateFormatMode(); setControlsEnabled(true); statusMsg('読み込み完了: '+(v.currentSrc||'ファイル')); var t=$('#toggleBtn'); if(t) t.textContent='再生'; });
+      v.addEventListener('loadedmetadata', function(){ isFileReady = true; updateFormatMode(); setControlsEnabled(true); statusMsg('読み込み完了: ' + (fileLabel || v.currentSrc || 'ファイル')); var t=$('#toggleBtn'); if(t) t.textContent='再生'; });
       v.addEventListener('play', function(){ var t=$('#toggleBtn'); if (t && mode==='file') t.textContent='一時停止'; });
       v.addEventListener('pause', function(){ var t=$('#toggleBtn'); if (t && mode==='file') t.textContent='再生'; });
       v.addEventListener('ended', function(){ var t=$('#toggleBtn'); if (t && mode==='file') t.textContent='再生'; });
@@ -289,6 +290,7 @@
     function handleFileChosen(f){
       if (!f) return;
       if (!/\.(mp4|mp3|wav)$/i.test(f.name)) { alert('対応形式は mp4 / mp3 / wav です'); return; }
+      fileLabel = f ? f.name : '';
       mode = 'file';
       // YouTube を隠す
       var playerDiv = $('#player'); if (playerDiv) playerDiv.style.display='none';
