@@ -189,7 +189,7 @@
       if (!e) return;
       if (e.data===YT.PlayerState.CUED){
         updateFormatMode(); if (mode==='youtube') setControlsEnabled(true);
-        try{ var d=player.getVideoData&&player.getVideoData(); var title=d&&d.title; statusMsg(title? ('loaded: '+title) : 'loaded'); }catch(_){ statusMsg('loaded'); }
+        try{ var d=player.getVideoData&&player.getVideoData(); var title=d&&d.title; statusMsg(title ? ('読み込み完了: ' + title) : '読み込み完了'); }catch(_){ statusMsg('読み込み完了'); }
         var t=$('#toggleBtn'); if (t&&mode==='youtube') t.textContent='再生';
       } else if (e.data===YT.PlayerState.PLAYING){ var t1=$('#toggleBtn'); if (t1&&mode==='youtube') t1.textContent='一時停止'; }
         else if (e.data===YT.PlayerState.PAUSED || e.data===YT.PlayerState.ENDED){ var t2=$('#toggleBtn'); if (t2&&mode==='youtube') t2.textContent='再生'; }
@@ -207,7 +207,7 @@
       if (fileEl) return fileEl;
       var v=document.createElement('video'); v.setAttribute('playsinline',''); v.preload='metadata'; v.controls=true; v.style.width='100%'; v.style.height='100%'; v.id='fileMedia';
       var wrap=$('#playerWrap'); wrap.appendChild(v);
-      v.addEventListener('loadedmetadata', function(){ isFileReady=true; updateFormatMode(); setControlsEnabled(true); statusMsg('loaded: '+(fileLabel||v.currentSrc||'file')); var t=$('#toggleBtn'); if (t&&mode==='file') t.textContent='再生'; });
+      v.addEventListener('loadedmetadata', function(){ isFileReady=true; updateFormatMode(); setControlsEnabled(true); statusMsg('読み込み完了: ' + (fileLabel||v.currentSrc||'file')); var t=$('#toggleBtn'); if (t&&mode==='file') t.textContent='再生'; });
       v.addEventListener('play', function(){ var t=$('#toggleBtn'); if (t&&mode==='file') t.textContent='一時停止'; });
       v.addEventListener('pause', function(){ var t=$('#toggleBtn'); if (t&&mode==='file') t.textContent='再生'; });
       v.addEventListener('ended', function(){ var t=$('#toggleBtn'); if (t&&mode==='file') t.textContent='再生'; });
