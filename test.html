@@ -221,7 +221,10 @@
   }
 
   function buildPreview(){
-    var lines=stamps.slice().sort(function(a,b){return a.time-b.time;}).map(function(x){return fmt(x.time)+(x.label? ' '+x.label : '');});
+    var lines = stamps.slice().sort(function(a,b){return a.time-b.time;}).map(function(x){return fmt(x.time)+(x.label? ' '+x.label : '');});
+    var ta=$('#preview'); if(ta) ta.value = lines.join('
+');
+  }).map(function(x){return fmt(x.time)+(x.label? ' '+x.label : '');});
     var ta=$('#preview'); if(ta) ta.value=lines.join('
 ');
   }
