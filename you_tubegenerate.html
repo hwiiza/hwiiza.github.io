@@ -37,6 +37,12 @@
     .tsgrid > * { align-self: start; }
     .listArea { display: grid; align-content: start; }
     #list { margin-top: 0; display: grid; align-content: start; }
+      /* 強制的に上詰めで横並び：小画面は縦→大画面は横 */
+    .tsgrid { display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
+    @media (min-width: 700px) { .tsgrid { flex-direction: row; } }
+    .tsgrid > * { align-self: flex-start; }
+    .listArea { align-self: flex-start; }
+    #list { margin-top: 0; max-height: 60vh; overflow: auto; display: block; }
   </style>
 </head>
 <body>
