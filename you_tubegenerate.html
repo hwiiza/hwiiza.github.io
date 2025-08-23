@@ -64,7 +64,7 @@
         <div id="player"></div>
         <!-- ファイル用 <video> は必要時に生成し、不要なら破棄して重なりを防止 -->
       </div>
-      <div class="hint">スペースキー: 再生/一時停止、Enter: 現在位置を追加</div>
+      <div class="hint">スペースキー: 再生/一時停止</div>
     </div>
 
     <div class="stack">
@@ -312,6 +312,17 @@
 
     window.addEventListener('keydown', function(e){
       var tag = (e.target.tagName||'').toLowerCase();
+      if (tag==='input' || tag==='textarea') return;
+      if (e.code==='Space'){
+        e.preventDefault();
+        if (mode==='youtube'){
+          var st = player && player.getPlayerState ? player.getPlayerState() : undefined;
+          if (st===YT.PlayerState.PLAYING) current.pause(); else current.play();
+        } else {
+          if (fileEl){ if (fileEl.paused) current.play(); else current.pause(); }
+        }
+      }
+    });
       if (tag==='input' || tag==='textarea') return;
       if (e.code==='Space'){
         e.preventDefault();
