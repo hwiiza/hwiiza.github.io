@@ -33,11 +33,10 @@
     <div class="row">
       <input id="videoInput" type="text" placeholder="YouTubeのURL または 動画ID" />
       <button id="loadBtn">読み込み</button>
-      <span class="hint">例: https://www.youtube.com/watch?v=dQw4w9WgXcQ</span>
+      
     </div>
     <div class="row">
-      <button id="playBtn" disabled>再生</button>
-      <button id="pauseBtn" disabled>一時停止</button>
+      <button id="toggleBtn" disabled>再生</button>
       <button id="addBtn" disabled>現在位置でタイムスタンプ追加</button>
       <span id="status" class="pill">未ロード</span>
     </div>
@@ -57,6 +56,7 @@
       <ul id="list"></ul>
       <div class="row">
         <button id="copyBtn" disabled>一覧をコピー</button>
+        <button id="clearBtn" disabled>すべて削除</button>
       </div>
       <textarea id="preview" readonly placeholder="ここにコピー内容が表示されます"></textarea>
     </div>
@@ -121,6 +121,17 @@
         } catch(_) {
           document.getElementById('status').textContent = '読み込み完了';
         }
+        const t = document.getElementById('toggleBtn'); if (t) t.textContent = '再生';
+      }
+      if (e.data === YT.PlayerState.PLAYING) {
+        const t = document.getElementById('toggleBtn'); if (t) t.textContent = '一時停止';
+      }
+      if (e.data === YT.PlayerState.PAUSED || e.data === YT.PlayerState.ENDED) {
+        const t = document.getElementById('toggleBtn'); if (t) t.textContent = '再生';
+      }
+    } catch(_) {
+          document.getElementById('status').textContent = '読み込み完了';
+        }
       }
     }
 
@@ -148,9 +159,12 @@
     }
 
     function setControlsEnabled(ready) {
-      document.getElementById('playBtn').disabled = !ready;
-      document.getElementById('pauseBtn').disabled = !ready;
-      document.getElementById('addBtn').disabled = !ready;      document.getElementById('copyBtn').disabled = stamps.length === 0;
+      const tgl = document.getElementById('toggleBtn');
+      if (tgl) tgl.disabled = !ready;
+      document.getElementById('addBtn').disabled = !ready;
+      document.getElementById('copyBtn').disabled = stamps.length === 0;
+      const clr = document.getElementById('clearBtn');
+      if (clr) clr.disabled = stamps.length === 0;
     }
 
     function fmt(sec) {
@@ -169,8 +183,31 @@
     }
 
     function rebuildList() {
-      // 互換: 数値だけの古い要素が残っていたらオブジェクト化
       stamps = stamps.map(x => (typeof x === 'number' ? { time: x, label: '' } : x));
+      const ul = document.getElementById('list');
+      ul.innerHTML = '';
+      stamps.sort((a,b)=>a.time-b.time);
+      for (const item of stamps) {
+        const li = document.createElement('li');
+        li.className = 'stamp';
+        const time = document.createElement('code');
+        time.className = 'time';
+        time.textContent = fmt(item.time);
+        const title = document.createElement('input');
+        title.className = 'title';
+        title.value = item.label || '';
+        title.placeholder = '（任意）見出し';
+        title.addEventListener('input', () => { item.label = title.value; buildPreview(); });
+        const del = document.createElement('button');
+        del.textContent = '削除';
+        del.addEventListener('click', () => { stamps = stamps.filter(x=>x!==item); rebuildList(); buildPreview(); });
+        li.append(time, title, del);
+        ul.appendChild(li);
+      }
+      document.getElementById('copyBtn').disabled = stamps.length === 0;
+      const clr = document.getElementById('clearBtn'); if (clr) clr.disabled = stamps.length === 0;
+      buildPreview();
+    } : x));
       stamps.sort((a,b)=>a.time-b.time);
       const ul = document.getElementById('list');
       ul.innerHTML = '';
@@ -228,13 +265,30 @@
       document.getElementById('status').textContent = '読み込み中…';
     });
 
-    document.getElementById('playBtn').addEventListener('click', () => player && player.playVideo());
-    document.getElementById('pauseBtn').addEventListener('click', () => player && player.pauseVideo());
+    
+    
+    document.getElementById('toggleBtn').addEventListener('click', () => {
+      const st = player && player.getPlayerState ? player.getPlayerState() : undefined;
+      if (st === YT.PlayerState.PLAYING) player.pauseVideo();
+      else player.playVideo();
+    });
     document.getElementById('addBtn').addEventListener('click', addCurrent);
     document.getElementById('copyBtn').addEventListener('click', async () => {
       const txt = document.getElementById('preview').value;
       try {
         await navigator.clipboard.writeText(txt);
+        document.getElementById('status').textContent = 'コピーしました';
+      } catch (e) {
+        const ta = document.getElementById('preview');
+        ta.focus(); ta.select(); document.getSelection().removeAllRanges();
+        document.getElementById('status').textContent = 'コピーに失敗。手動でCtrl/Cmd+Cでコピーしてください';
+      }
+    });
+    document.getElementById('clearBtn').addEventListener('click', () => {
+      if (!stamps.length) return;
+      if (!confirm('すべてのタイムスタンプを削除します。よろしいですか？')) return;
+      stamps = []; rebuildList();
+    });
         document.getElementById('status').textContent = 'コピーしました';
       } catch (e) {
         const ta = document.getElementById('preview');
