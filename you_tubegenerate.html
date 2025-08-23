@@ -32,6 +32,11 @@
     #list { max-height: 60vh; overflow: auto; }
       /* ヘッダー下の余白を詰める */
     .stack > h2 { margin: 0 0 6px; }
+      /* タイムスタンプ一覧を上詰めにする */
+    .tsgrid { align-items: start; }
+    .tsgrid > * { align-self: start; }
+    .listArea { display: grid; align-content: start; }
+    #list { margin-top: 0; display: grid; align-content: start; }
   </style>
 </head>
 <body>
