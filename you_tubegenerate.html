@@ -55,6 +55,15 @@
     li.stamp { display: grid; grid-template-columns: auto 1fr auto; align-items: center; column-gap: 8px; margin: 0; }
     #list .stamp + .stamp { margin-top: 0; } /* row-gap を使用するため */
     li.stamp .title { width: 100%; min-width: 0; }
+      /* ==== 上詰めを強制するため、タイムスタンプ列とプレビュー列を flex で独立配置 ==== */
+    .tsgrid { display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
+    @media (min-width: 700px) { .tsgrid { flex-direction: row; } }
+    .tsgrid > .listArea, .tsgrid > .previewArea { flex: 1 1 0; min-width: 0; align-self: flex-start; }
+
+    /* リストは縦方向に詰めて並べ、上端固定。横スクロールは出さない */
+    #list { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; max-height: 60vh; overflow-y: auto; overflow-x: hidden; align-items: stretch; justify-content: flex-start; }
+    li.stamp { display: grid; grid-template-columns: auto 1fr auto; align-items: center; column-gap: 8px; margin: 0; }
+    li.stamp .title { width: 100%; min-width: 0; }
   </style>
 </head>
 <body>
