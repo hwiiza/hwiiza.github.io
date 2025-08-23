@@ -193,7 +193,7 @@
     window.onYouTubeIframeAPIReady = function(){
       player = new YT.Player('player', {
         height:'100%', width:'100%', videoId:'',
-        host:'https://www.youtube.com',
+        // NOTE: do not set `host` to avoid postMessage origin warnings on GitHub Pages
         playerVars:{ playsinline:1, origin: location.origin, enablejsapi:1 },
         events:{ onReady:onReady, onStateChange:onStateChange, onError:onError }
       });
