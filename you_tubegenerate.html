@@ -29,17 +29,26 @@
     .tsgrid .previewArea { display: grid; gap: 8px; }
     #list { display: flex; flex-direction: column; gap: 8px; margin: 0; max-height: 60vh; overflow-y: auto; overflow-x: hidden; align-items: stretch; justify-content: flex-start; }
     textarea { width: 100%; height: 140px; }
+      .hidden { display: none !important; }
   </style>
 </head>
 <body>
   <h1>タイムスタンプ作成ツール(プレビュー版)</h1>
 
   <div class="stack" style="margin-bottom:16px">
-    <div class="row" id="ytRow">
+    <div class="row" id="modeRow">
+      <label><input type="radio" name="mode" value="youtube" checked> YouTube</label>
+      <label><input type="radio" name="mode" value="file"> ファイル</label>
+    </div>
+    <div class="row" id="ytControls">
       <input id="videoInput" type="text" placeholder="YouTubeのURL または 動画ID" />
       <button id="ytLoadBtn" type="button">読み込み</button>
+    </div>
+    <div class="row hidden" id="fileControls">
       <button id="fileSelectBtn" type="button">ファイルを選択（mp4/mp3/wav）</button>
       <input id="fileInput" type="file" accept="video/mp4,audio/mpeg,audio/wav" style="display:none" />
+    </div>
+    <div class="row">
       <span id="status" class="pill">未ロード</span>
     </div>
     <div class="row">
@@ -230,6 +239,29 @@
       isFileReady = false;
     }
 
+    // ===== Mode switch (radio) =====
+    function setMode(newMode){
+      mode = newMode;
+      var ytC = document.getElementById('ytControls');
+      var fC  = document.getElementById('fileControls');
+      if (ytC) ytC.classList.toggle('hidden', mode !== 'youtube');
+      if (fC)  fC.classList.toggle('hidden',  mode !== 'file');
+      if (mode === 'youtube'){
+        // ファイル要素を完全撤去し、YouTubeを見せる
+        destroyFileVideo();
+        var p = document.getElementById('player'); if (p) p.style.display = '';
+        setControlsEnabled(isYTReady);
+        statusMsg('未ロード');
+      } else {
+        // YouTubeは隠し、ファイル未選択の状態に
+        var p2 = document.getElementById('player'); if (p2) p2.style.display = 'none';
+        setControlsEnabled(isFileReady);
+        if (!isFileReady) statusMsg('ファイル未選択');
+      }
+    }
+    var modeRadios = document.getElementsByName('mode');
+    for (var i=0;i<modeRadios.length;i++){ modeRadios[i].addEventListener('change', function(e){ setMode(e.target.value); }); }
+
     // ===== Actions =====
     function loadYouTube(){
       mode = 'youtube';
@@ -306,6 +338,8 @@
 
     // Start time display loop
     requestAnimationFrame(loopUpdateCurrentTime);
+    // Initial mode
+    setMode('youtube');
   })();
   </script>
 </body>
