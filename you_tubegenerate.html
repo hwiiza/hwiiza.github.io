@@ -105,6 +105,14 @@
   function $(sel){ return document.querySelector(sel); }
   function statusMsg(msg){ var s = $('#status'); if (s) s.textContent = String(msg); }
 
+  // Japanese messages (escaped)
+  var MSG_UNLOADED = '未読み込み';                // 未読み込み
+  var MSG_LOADING  = '読み込み中…';          // 読み込み中…
+  var MSG_LOADED   = '読み込み完了';          // 読み込み完了
+  var MSG_ERROR    = 'エラー: ';                             // エラー:
+  var MSG_CONFIRM  = 'モードを切り替えると作成済みのタイムスタンプはすべて削除されます。よろしいですか？';
+  var PH_HINT      = '（任意）見出し';   // （任意）見出し
+
   function fmt(sec){
     if (!isFinite(sec)) return '--:--';
     sec = Math.max(0, Math.floor(sec));
@@ -141,9 +149,9 @@
       (function(item){
         var li = document.createElement('li'); li.className = 'stamp';
         var time = document.createElement('code'); time.className = 'time'; time.textContent = fmt(item.time);
-        var title = document.createElement('input'); title.className = 'title'; title.value = item.label || ''; title.placeholder = '（任意）見出し';
+        var title = document.createElement('input'); title.className = 'title'; title.value = item.label || ''; title.placeholder = PH_HINT;
         title.addEventListener('input', function(){ item.label = title.value; buildPreview(); });
-        var del = document.createElement('button'); del.textContent = '削除';
+        var del = document.createElement('button'); del.textContent = '削除'; // 削除
         del.addEventListener('click', function(){ stamps = stamps.filter(function(x){ return x !== item; }); rebuildList(); buildPreview(); });
         li.appendChild(time); li.appendChild(title); li.appendChild(del);
         ul.appendChild(li);
@@ -168,7 +176,7 @@
   // ===== YouTube IFrame API =====
   (function loadYT(){
     var tag = document.createElement('script'); tag.src = 'https://www.youtube.com/iframe_api'; tag.async = true;
-    tag.onerror = function(){ statusMsg('YouTube APIの読み込みに失敗しました'); };
+    tag.onerror = function(){ statusMsg('YouTube API load failed'); };
     document.head.appendChild(tag);
   })();
 
@@ -182,7 +190,7 @@
   };
 
   function onReady(){
-    isYTReady = true; statusMsg('未読み込み'); updateFormatMode(); setControlsEnabled(mode === 'youtube');
+    isYTReady = true; statusMsg(MSG_UNLOADED); updateFormatMode(); setControlsEnabled(mode === 'youtube');
     if (pendingVideoId){ try{ player.cueVideoById(pendingVideoId); }catch(e){} pendingVideoId = ''; }
   }
 
@@ -193,18 +201,18 @@
       try{
         var d = player.getVideoData && player.getVideoData();
         var title = d && d.title;
-        statusMsg(title ? ('読み込み完了: ' + title) : '読み込み完了');
-      }catch(_){ statusMsg('読み込み完了'); }
-      var t = $('#toggleBtn'); if (t && mode === 'youtube') t.textContent = '再生';
-    } else if (e.data === YT.PlayerState.PLAYING){ var t1 = $('#toggleBtn'); if (t1 && mode === 'youtube') t1.textContent = '一時停止'; }
+        statusMsg(title ? (MSG_LOADED + ': ' + title) : MSG_LOADED);
+      }catch(_){ statusMsg(MSG_LOADED); }
+      var t = $('#toggleBtn'); if (t && mode === 'youtube') t.textContent = '再生'; // 再生
+    } else if (e.data === YT.PlayerState.PLAYING){ var t1 = $('#toggleBtn'); if (t1 && mode === 'youtube') t1.textContent = '一時停止'; } // 一時停止
       else if (e.data === YT.PlayerState.PAUSED || e.data === YT.PlayerState.ENDED){ var t2 = $('#toggleBtn'); if (t2 && mode === 'youtube') t2.textContent = '再生'; }
   }
 
-  function onError(e){ statusMsg('エラー: ' + (e && e.data)); }
+  function onError(e){ statusMsg(MSG_ERROR + (e && e.data)); }
 
   function ensureCueOrLoad(id, phase){
     try{ var st = player && player.getPlayerState ? player.getPlayerState() : undefined; if (st === YT.PlayerState.CUED || st === YT.PlayerState.PAUSED || st === YT.PlayerState.PLAYING) return; }catch(_){ }
-    if (phase === 0){ try{ player.loadVideoById(id); }catch(_){ } setTimeout(function(){ try{ player.pauseVideo(); }catch(_){ } }, 500); setTimeout(function(){ ensureCueOrLoad(id, 1); }, 1400); }
+    if (phase === 0){ try{ player.loadVideoById(id); }catch(_){ } setTimeout(function(){ try{ player.pauseVideo(); }catch(_){ } }, 500); setTimeout(function(){ ensureCueOrLoad(id, 1); } , 1400); }
     else if (phase === 1){ try{ player.cueVideoById(id); }catch(_){ } }
   }
 
@@ -214,7 +222,7 @@
     var v = document.createElement('video');
     v.setAttribute('playsinline',''); v.preload = 'metadata'; v.controls = true; v.style.width = '100%'; v.style.height = '100%'; v.id = 'fileMedia';
     var wrap = $('#playerWrap'); wrap.appendChild(v);
-    v.addEventListener('loadedmetadata', function(){ isFileReady = true; updateFormatMode(); setControlsEnabled(true); statusMsg('読み込み完了: ' + (fileLabel || v.currentSrc || 'file')); var t = $('#toggleBtn'); if (t && mode === 'file') t.textContent = '再生'; });
+    v.addEventListener('loadedmetadata', function(){ isFileReady = true; updateFormatMode(); setControlsEnabled(true); statusMsg(MSG_LOADED + ': ' + (fileLabel || v.currentSrc || 'file')); var t = $('#toggleBtn'); if (t && mode === 'file') t.textContent = '再生'; });
     v.addEventListener('play', function(){ var t = $('#toggleBtn'); if (t && mode === 'file') t.textContent = '一時停止'; });
     v.addEventListener('pause', function(){ var t = $('#toggleBtn'); if (t && mode === 'file') t.textContent = '再生'; });
     v.addEventListener('ended', function(){ var t = $('#toggleBtn'); if (t && mode === 'file') t.textContent = '再生'; });
@@ -235,8 +243,8 @@
   function loadYouTube(){
     mode = 'youtube'; destroyFileVideo(); var p = $('#player'); if (p) p.style.display = '';
     var vi = $('#videoInput'); var raw = vi ? (vi.value || '').trim() : ''; var id = parseVideoId(raw);
-    if (!id){ alert('URLまたは動画IDを入力してください'); return; }
-    setControlsEnabled(false); statusMsg('読み込み中…');
+    if (!id){ alert('アドレスまたはIDを入力してください'); return; }
+    setControlsEnabled(false); statusMsg(MSG_LOADING);
     if (isYTReady){ try{ player.cueVideoById(id); }catch(_){ } } else { pendingVideoId = id; }
     setTimeout(function(){ try{ ensureCueOrLoad(id, 0); }catch(_){ } }, 1200);
   }
@@ -246,11 +254,11 @@
   function handleFileChosen(f){
     if (!f) return;
     var ok = /\.(mp4|mp3|wav)$/i.test(f.name);
-    if (!ok){ alert('対応形式は mp4 / mp3 / wav です'); return; }
+    if (!ok){ alert('mp4/mp3/wav のみ対応です'); return; }
     mode = 'file'; fileLabel = f.name || '';
     var p = $('#player'); if (p) p.style.display = 'none';
     var v = createFileVideo(); if (fileURL){ try{ URL.revokeObjectURL(fileURL); }catch(_){ } fileURL = null; }
-    fileURL = URL.createObjectURL(f); v.src = fileURL; v.load(); statusMsg('読み込み中…');
+    fileURL = URL.createObjectURL(f); v.src = fileURL; v.load(); statusMsg(MSG_LOADING);
   }
 
   // ===== Mode switch =====
@@ -259,18 +267,17 @@
     if (ytC){ ytC.classList.toggle('hidden', mode !== 'youtube'); ytC.style.display = (mode === 'youtube') ? '' : 'none'; }
     if (fC){  fC.classList.toggle('hidden',  mode !== 'file');    fC.style.display  = (mode === 'file')    ? '' : 'none'; }
     if (mode === 'youtube'){
-      destroyFileVideo(); var p1 = $('#player'); if (p1) p1.style.display = ''; setControlsEnabled(isYTReady); statusMsg('未読み込み'); var t1 = $('#toggleBtn'); if (t1) t1.textContent = '再生';
+      destroyFileVideo(); var p1 = $('#player'); if (p1) p1.style.display = ''; setControlsEnabled(isYTReady); statusMsg(MSG_UNLOADED); var t1 = $('#toggleBtn'); if (t1) t1.textContent = '再生';
     } else {
-      var p2 = $('#player'); if (p2) p2.style.display = 'none'; setControlsEnabled(isFileReady); if (!isFileReady) statusMsg('未読み込み'); var t2 = $('#toggleBtn'); if (t2) t2.textContent = '再生';
+      var p2 = $('#player'); if (p2) p2.style.display = 'none'; setControlsEnabled(isFileReady); if (!isFileReady) statusMsg(MSG_UNLOADED); var t2 = $('#toggleBtn'); if (t2) t2.textContent = '再生';
     }
   }
 
   function requestModeChange(nextMode){
     if (nextMode === mode) return;
     if (stamps && stamps.length > 0){
-      var ok = confirm('モードを切り替えると作成済みのタイムスタンプはすべて削除されます。よろしいですか？');
+      var ok = confirm(MSG_CONFIRM);
       if (!ok){
-        // revert radio selection
         try{
           var prev = document.querySelector('input[name="mode"][value="' + mode + '"]'); if (prev) prev.checked = true;
           var other = document.querySelector('input[name="mode"][value="' + nextMode + '"]'); if (other) other.checked = false;
@@ -292,7 +299,7 @@
 
   var tgl = $('#toggleBtn'); if (tgl){ tgl.addEventListener('click', function(){ if (mode === 'youtube'){ var st = player && player.getPlayerState ? player.getPlayerState() : undefined; if (st === YT.PlayerState.PLAYING) current.pause(); else current.play(); } else { if (fileEl){ if (fileEl.paused) current.play(); else current.pause(); } } }); }
   var addBtn = $('#addBtn'); if (addBtn){ addBtn.addEventListener('click', function(){ var t = current.getTime(); if (!isFinite(t)) return; stamps.push({ time:t, label:'' }); rebuildList(); }); }
-  var copyBtn = $('#copyBtn'); if (copyBtn){ copyBtn.addEventListener('click', function(){ var txt = $('#preview').value; navigator.clipboard.writeText(txt).then(function(){ statusMsg('コピーしました'); }).catch(function(){ try{ var ta = $('#preview'); ta.focus(); ta.select(); document.getSelection().removeAllRanges(); }catch(_){ } statusMsg('コピーに失敗。手動でコピーしてください'); }); }); }
+  var copyBtn = $('#copyBtn'); if (copyBtn){ copyBtn.addEventListener('click', function(){ var txt = $('#preview').value; navigator.clipboard.writeText(txt).then(function(){ statusMsg('コピーしました'); }).catch(function(){ try{ var ta = $('#preview'); ta.focus(); ta.select(); document.getSelection().removeAllRanges(); }catch(_){ } statusMsg('コピーに失敗'); }); }); }
   var clrBtn = $('#clearBtn'); if (clrBtn){ clrBtn.addEventListener('click', function(){ if (!stamps.length) return; if (!confirm('すべてのタイムスタンプを削除します。よろしいですか？')) return; stamps = []; rebuildList(); }); }
 
   window.addEventListener('keydown', function(e){
