@@ -88,22 +88,26 @@
 
     function setMode(newMode){
       mode = newMode;
-      const videoInputEl = document.getElementById('videoInput');
-      const loadBtn = document.getElementById('loadBtn');
+      const ytRow = document.getElementById('ytRow');
       const fileName = document.getElementById('fileName');
       const fm = document.getElementById('fileMedia');
       const iframe = document.querySelector('#playerWrap iframe');
-
       if (mode === 'youtube'){
-        // 入力欄は表示、ボタンは「読み込み」
-        videoInputEl.classList.remove('hidden');
-        if (loadBtn) loadBtn.textContent = '読み込み';
+        ytRow.classList.remove('hidden');
         fileName.classList.add('hidden');
         fm.style.display = 'none';
         if (iframe) iframe.style.display = '';
         setControlsEnabled(isYTReady);
         document.getElementById('status').textContent = '未ロード';
       } else {
+        ytRow.classList.add('hidden');
+        fileName.classList.remove('hidden');
+        fm.style.display = '';
+        if (iframe) iframe.style.display = 'none';
+        setControlsEnabled(isFileReady);
+        document.getElementById('status').textContent = 'ファイル未選択';
+      }
+    } else {
         // 入力欄は隠すが、同じボタンを「ファイルを選択」として使う
         videoInputEl.classList.add('hidden');
         if (loadBtn) loadBtn.textContent = 'ファイルを選択';
