@@ -66,7 +66,7 @@
         <div id="player"></div>
         <!-- ファイル再生用の <video> は必要時に生成・破棄。普段は存在しないので YouTube を妨げません -->
       </div>
-      <div class="hint">スペースキー: 再生/一時停止</div>
+      <div class="hint">スペースキー: 再生/一時停止、Enter: 現在位置を追加</div>
     </div>
 
     <div class="stack">
@@ -247,15 +247,25 @@
       mode = newMode;
       var ytC = document.getElementById('ytControls');
       var fC  = document.getElementById('fileControls');
-      if (ytC) ytC.classList.toggle('hidden', mode !== 'youtube');
-      if (fC)  fC.classList.toggle('hidden',  mode !== 'file');
+      // クラスとstyleの両方で明示切替（環境依存の崩れ対策）
+      if (ytC){ ytC.classList.toggle('hidden', mode !== 'youtube'); ytC.style.display = (mode==='youtube') ? '' : 'none'; }
+      if (fC){  fC.classList.toggle('hidden',  mode !== 'file');    fC.style.display  = (mode==='file')    ? '' : 'none'; }
+
       if (mode === 'youtube'){
         // ファイル要素を完全撤去し、YouTubeを見せる
         destroyFileVideo();
         var p = document.getElementById('player'); if (p) p.style.display = '';
         setControlsEnabled(isYTReady);
         statusMsg('未ロード');
+        var t = document.getElementById('toggleBtn'); if (t) t.textContent = '再生';
       } else {
+        // YouTubeは隠し、ファイル未選択の状態に
+        var p2 = document.getElementById('player'); if (p2) p2.style.display = 'none';
+        setControlsEnabled(isFileReady);
+        if (!isFileReady) statusMsg('ファイル未選択');
+        var t2 = document.getElementById('toggleBtn'); if (t2) t2.textContent = '再生';
+      }
+    } else {
         // YouTubeは隠し、ファイル未選択の状態に
         var p2 = document.getElementById('player'); if (p2) p2.style.display = 'none';
         setControlsEnabled(isFileReady);
@@ -319,6 +329,22 @@
 
     window.addEventListener('keydown', function(e){
       var tag=(e.target.tagName||'').toLowerCase();
+      if (tag==='input' || tag==='textarea') return;
+      if (e.code==='Space'){
+        e.preventDefault();
+        if (mode==='youtube'){
+          var st = player && player.getPlayerState ? player.getPlayerState() : undefined;
+          if (st===YT.PlayerState.PLAYING) current.pause(); else current.play();
+        } else {
+          if (fileEl){ if (fileEl.paused) current.play(); else current.pause(); }
+        }
+      } else if (e.key==='Enter'){
+        var t = current.getTime();
+        if (!isFinite(t)) return;
+        stamps.push({time:t, label:''});
+        rebuildList();
+      }
+    });
       if (tag==='input' || tag==='textarea') return;
       if (e.code==='Space'){
         e.preventDefault();
