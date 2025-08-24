@@ -43,7 +43,7 @@
 <body>
   <h1>タイムスタンプ作成ツール(プレビュー版)</h1>
 
-  <!-- i18n dictionary (read by JS; keeps Japanese out of JS source) -->
+  <!-- i18n dictionary -->
   <div id="i18n" class="hidden">
     <span id="msg_unloaded">未読み込み</span>
     <span id="msg_loading">読み込み中…</span>
@@ -60,7 +60,7 @@
     <span id="invalid_time">無効な時間形式です。mm:ss または hh:mm:ss で入力してください。</span>
     <span id="msg_copied">コピーしました</span>
     <span id="msg_copy_failed">コピーに失敗</span>
-    <!-- 追加: JSで参照しているが未定義だったキー -->
+    <!-- 追加 -->
     <span id="edit_hint">ダブルクリックして編集</span>
     <span id="btn_delete">削除</span>
     <span id="confirm_clear">すべて削除します。よろしいですか？</span>
@@ -134,7 +134,7 @@
 (function(){
   'use strict';
 
-  // ===== Helpers (ASCII only in JS) =====
+  // ===== Helpers =====
   function $(sel){ return document.querySelector(sel); }
   function T(id){ var el=document.getElementById(id); return el? (el.textContent||'') : ''; }
   function statusMsg(msg){ var s=$('#status'); if(s) s.textContent=String(msg); }
@@ -164,6 +164,7 @@
   // ===== State =====
   var mode='youtube';
   var player=null, isYTReady=false, pendingVideoId='';
+  var isYTVideoReady=false; // ← 追加: 動画が読み込まれたか（API準備完了とは別）
   var fileEl=null, fileURL=null, isFileReady=false, fileLabel='';
   var stamps=[]; // { time:number, label:string }
   var useHMS=false; // >=3600s -> hh:mm:ss
@@ -251,14 +252,15 @@
         ul.appendChild(li);
       })(stamps[i]);
     }
-    setControlsEnabled(mode==='youtube'? isYTReady : isFileReady);
+    // ★ YouTube の「動画未読込時」は非活性
+    setControlsEnabled(mode==='youtube' ? isYTVideoReady : isFileReady);
     buildPreview();
   }
 
   function buildPreview(){
     var lines = stamps.slice().sort(function(a,b){ return a.time-b.time; })
       .map(function(x){ return fmt(x.time) + (x.label? ' '+x.label : ''); });
-    var ta=$('#preview'); if(ta) ta.value = lines.join('\n'); // ← 改行は文字列で
+    var ta=$('#preview'); if(ta) ta.value = lines.join('\n');
   }
 
   function loopUpdateCurrentTime(){
@@ -283,24 +285,49 @@
   };
 
   function onReady(){
-    isYTReady=true; statusMsg(MSG_UNLOADED); updateFormatMode(); setControlsEnabled(mode==='youtube');
+    isYTReady=true;
+    isYTVideoReady=false;                 // API 準備完了時点では未読込
+    statusMsg(MSG_UNLOADED);
+    updateFormatMode();
+    setControlsEnabled(false);            // ★ 非活性
     if(pendingVideoId){ try{ player.cueVideoById(pendingVideoId); }catch(e){} pendingVideoId=''; }
   }
   function onStateChange(e){
     if(!e) return;
     if(e.data===YT.PlayerState.CUED){
-      updateFormatMode(); if(mode==='youtube') setControlsEnabled(true);
-      try{ var d=player.getVideoData&&player.getVideoData(); var title=d&&d.title; statusMsg(title? (MSG_LOADED+': '+title) : MSG_LOADED); }catch(_){ statusMsg(MSG_LOADED); }
+      isYTVideoReady=true;                // ★ 動画が読み込まれた
+      updateFormatMode();
+      if(mode==='youtube') setControlsEnabled(true);
+      try{
+        var d=player.getVideoData&&player.getVideoData(); var title=d&&d.title;
+        statusMsg(title? (MSG_LOADED+': '+title) : MSG_LOADED);
+      }catch(_){ statusMsg(MSG_LOADED); }
       var t=$('#toggleBtn'); if(t&&mode==='youtube') t.textContent=BTN_PLAY;
-    } else if(e.data===YT.PlayerState.PLAYING){ var t1=$('#toggleBtn'); if(t1&&mode==='youtube') t1.textContent=BTN_PAUSE; }
-      else if(e.data===YT.PlayerState.PAUSED || e.data===YT.PlayerState.ENDED){ var t2=$('#toggleBtn'); if(t2&&mode==='youtube') t2.textContent=BTN_PLAY; }
+    } else if(e.data===YT.PlayerState.PLAYING){
+      var t1=$('#toggleBtn'); if(t1&&mode==='youtube') t1.textContent=BTN_PAUSE;
+    } else if(e.data===YT.PlayerState.PAUSED || e.data===YT.PlayerState.ENDED){
+      var t2=$('#toggleBtn'); if(t2&&mode==='youtube') t2.textContent=BTN_PLAY;
+    }
   }
-  function onError(e){ statusMsg(MSG_ERROR + (e&&e.data)); }
+  function onError(e){
+    isYTVideoReady=false;                 // エラー時は非活性に戻す
+    if(mode==='youtube') setControlsEnabled(false);
+    statusMsg(MSG_ERROR + (e&&e.data));
+  }
 
   function ensureCueOrLoad(id,phase){
-    try{ var st=player&&player.getPlayerState? player.getPlayerState():undefined; if(st===YT.PlayerState.CUED||st===YT.PlayerState.PAUSED||st===YT.PlayerState.PLAYING) return; }catch(_){ }
-    if(phase===0){ try{ player.loadVideoById(id); }catch(_){ } setTimeout(function(){ try{ player.pauseVideo(); }catch(_){ } },500); setTimeout(function(){ ensureCueOrLoad(id,1); },1400); }
-    else if(phase===1){ try{ player.cueVideoById(id); }catch(_){ } }
+    try{
+      var st=player&&player.getPlayerState? player.getPlayerState():undefined;
+      if(st===YT.PlayerState.CUED||st===YT.PlayerState.PAUSED||st===YT.PlayerState.PLAYING) return;
+    }catch(_){ }
+    if(phase===0){
+      try{ player.loadVideoById(id); }catch(_){ }
+      setTimeout(function(){ try{ player.pauseVideo(); }catch(_){ } },500);
+      setTimeout(function(){ ensureCueOrLoad(id,1); },1400);
+    }
+    else if(phase===1){
+      try{ player.cueVideoById(id); }catch(_){ }
+    }
   }
 
   // ===== File playback =====
@@ -308,23 +335,37 @@
     if(fileEl) return fileEl;
     var v=document.createElement('video'); v.setAttribute('playsinline',''); v.preload='metadata'; v.controls=true; v.style.width='100%'; v.style.height='100%'; v.id='fileMedia';
     var wrap=$('#playerWrap'); wrap.appendChild(v);
-    v.addEventListener('loadedmetadata', function(){ isFileReady=true; updateFormatMode(); setControlsEnabled(true); statusMsg(MSG_LOADED+': '+(fileLabel||v.currentSrc||'file')); var t=$('#toggleBtn'); if(t&&mode==='file') t.textContent=BTN_PLAY; });
+    v.addEventListener('loadedmetadata', function(){
+      isFileReady=true; updateFormatMode(); setControlsEnabled(true);
+      statusMsg(MSG_LOADED+': '+(fileLabel||v.currentSrc||'file'));
+      var t=$('#toggleBtn'); if(t&&mode==='file') t.textContent=BTN_PLAY;
+    });
     v.addEventListener('play',  function(){ var t=$('#toggleBtn'); if(t&&mode==='file') t.textContent=BTN_PAUSE; });
     v.addEventListener('pause', function(){ var t=$('#toggleBtn'); if(t&&mode==='file') t.textContent=BTN_PLAY;  });
     v.addEventListener('ended', function(){ var t=$('#toggleBtn'); if(t&&mode==='file') t.textContent=BTN_PLAY;  });
     fileEl=v; return v;
   }
   function destroyFileVideo(){
-    try{ if(fileEl){ try{ fileEl.pause(); }catch(_){ } if(fileURL){ try{ URL.revokeObjectURL(fileURL); }catch(_){ } fileURL=null; } fileEl.removeAttribute('src'); fileEl.load(); fileEl.remove(); fileEl=null; } }catch(_){ }
+    try{
+      if(fileEl){
+        try{ fileEl.pause(); }catch(_){}
+        if(fileURL){ try{ URL.revokeObjectURL(fileURL); }catch(_){ } fileURL=null; }
+        fileEl.removeAttribute('src'); fileEl.load(); fileEl.remove(); fileEl=null;
+      }
+    }catch(_){}
     isFileReady=false; fileLabel='';
   }
 
   // ===== Actions =====
   function loadYouTube(){
-    mode='youtube'; destroyFileVideo(); var p=$('#player'); if(p) p.style.display='';
+    mode='youtube';
+    isYTVideoReady=false;                 // ★ 読み込み開始前に無効化
+    destroyFileVideo();
+    var p=$('#player'); if(p) p.style.display='';
     var vi=$('#videoInput'); var raw=vi? (vi.value||'').trim() : ''; var id=parseVideoId(raw);
     if(!id){ alert(ALERT_NEED_ID); return; }
-    setControlsEnabled(false); statusMsg(MSG_LOADING);
+    setControlsEnabled(false);            // ★ 非活性
+    statusMsg(MSG_LOADING);
     if(isYTReady){ try{ player.cueVideoById(id); }catch(_){ } } else { pendingVideoId=id; }
     setTimeout(function(){ try{ ensureCueOrLoad(id,0); }catch(_){ } },1200);
   }
@@ -334,18 +375,27 @@
     var ok=/\.(mp4|mp3|wav)$/i.test(f.name); if(!ok){ alert(ALERT_FILE_TYPES); return; }
     mode='file'; fileLabel=f.name||''; var p=$('#player'); if(p) p.style.display='none';
     var v=createFileVideo(); if(fileURL){ try{ URL.revokeObjectURL(fileURL); }catch(_){ } fileURL=null; }
-    fileURL=URL.createObjectURL(f); v.src=fileURL; v.load(); statusMsg(MSG_LOADING);
+    isYTVideoReady=false;                 // YouTube 側は未読込扱いに
+    v.src = (fileURL=URL.createObjectURL(f)); v.load(); statusMsg(MSG_LOADING);
   }
 
   // ===== Mode switch =====
   function setMode(newMode){
-    mode=newMode; var ytC=$('#ytControls'); var fC=$('#fileControls');
+    mode=newMode;
+    var ytC=$('#ytControls'); var fC=$('#fileControls');
     if(ytC){ ytC.classList.toggle('hidden', mode!=='youtube'); ytC.style.display=(mode==='youtube')? '' : 'none'; }
     if(fC){  fC.classList.toggle('hidden',  mode!=='file');    fC.style.display=(mode==='file')? '' : 'none'; }
     if(mode==='youtube'){
-      destroyFileVideo(); var p1=$('#player'); if(p1) p1.style.display=''; setControlsEnabled(isYTReady); statusMsg(MSG_UNLOADED); var t1=$('#toggleBtn'); if(t1) t1.textContent=BTN_PLAY;
+      destroyFileVideo();
+      var p1=$('#player'); if(p1) p1.style.display='';
+      setControlsEnabled(isYTVideoReady); // ★ 動画読み込み済みかどうかで制御
+      statusMsg(isYTVideoReady ? MSG_LOADED : MSG_UNLOADED);
+      var t1=$('#toggleBtn'); if(t1) t1.textContent=BTN_PLAY;
     } else {
-      var p2=$('#player'); if(p2) p2.style.display='none'; setControlsEnabled(isFileReady); if(!isFileReady) statusMsg(MSG_UNLOADED); var t2=$('#toggleBtn'); if(t2) t2.textContent=BTN_PLAY;
+      var p2=$('#player'); if(p2) p2.style.display='none';
+      setControlsEnabled(isFileReady);
+      if(!isFileReady) statusMsg(MSG_UNLOADED);
+      var t2=$('#toggleBtn'); if(t2) t2.textContent=BTN_PLAY;
     }
   }
   function requestModeChange(nextMode){
@@ -353,7 +403,10 @@
     if(stamps && stamps.length>0){
       var ok=confirm(MSG_CONFIRM);
       if(!ok){
-        try{ var prev=document.querySelector('input[name="mode"][value="'+mode+'"]'); if(prev) prev.checked=true; var other=document.querySelector('input[name="mode"][value="'+nextMode+'"]'); if(other) other.checked=false; }catch(_){ }
+        try{
+          var prev=document.querySelector('input[name="mode"][value="'+mode+'"]'); if(prev) prev.checked=true;
+          var other=document.querySelector('input[name="mode"][value="'+nextMode+'"]'); if(other) other.checked=false;
+        }catch(_){ }
         return;
       }
       stamps=[]; rebuildList();
@@ -369,7 +422,14 @@
   var fin=$('#fileInput'); if(fin){ fin.addEventListener('change', function(e){ var f=e.target.files && e.target.files[0]; handleFileChosen(f); }); }
   var vi=$('#videoInput'); if(vi){ vi.addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); loadYouTube(); } }); }
 
-  var tgl=$('#toggleBtn'); if(tgl){ tgl.addEventListener('click', function(){ if(mode==='youtube'){ var st=player&&player.getPlayerState? player.getPlayerState():undefined; if(st===YT.PlayerState.PLAYING) current.pause(); else current.play(); } else { if(fileEl){ if(fileEl.paused) current.play(); else current.pause(); } } }); }
+  var tgl=$('#toggleBtn'); if(tgl){ tgl.addEventListener('click', function(){
+    if(mode==='youtube'){
+      var st=player&&player.getPlayerState? player.getPlayerState():undefined;
+      if(st===YT.PlayerState.PLAYING) current.pause(); else current.play();
+    } else {
+      if(fileEl){ if(fileEl.paused) current.play(); else current.pause(); }
+    }
+  }); }
   var addBtn=$('#addBtn'); if(addBtn){ addBtn.addEventListener('click', function(){ var t=current.getTime(); if(!isFinite(t)) return; stamps.push({time:t,label:''}); rebuildList(); }); }
   var copyBtn=$('#copyBtn'); if(copyBtn){ copyBtn.addEventListener('click', function(){ var txt=$('#preview').value; navigator.clipboard.writeText(txt).then(function(){ statusMsg(MSG_COPIED); }).catch(function(){ try{ var ta=$('#preview'); ta.focus(); ta.select(); document.getSelection().removeAllRanges(); }catch(_){ } statusMsg(MSG_COPY_FAILED); }); }); }
   var clrBtn=$('#clearBtn'); if(clrBtn){ clrBtn.addEventListener('click', function(){ if(!stamps.length) return; if(!confirm(CONFIRM_CLEAR)) return; stamps=[]; rebuildList(); }); }
@@ -400,7 +460,7 @@
 
   // Start
   requestAnimationFrame(loopUpdateCurrentTime);
-  setMode('youtube');
+  setMode('youtube');                    // 初期は未読込 → 非活性
 })();
 </script>
 </body>
