@@ -63,8 +63,6 @@
     <span id="msg_loading">読み込み中…</span>
     <span id="msg_loaded">読み込み完了</span>
     <span id="msg_error">エラー: </span>
-    <span id="btn_play">再生</span>
-    <span id="btn_pause">一時停止</span>
     <span id="confirm_text">モードを切り替えると作成済みのタイムスタンプはすべて削除されます。よろしいですか？</span>
     <span id="ph_hint">（任意）見出し</span>
     <span id="dlg_title">タイムスタンプを編集</span>
@@ -85,6 +83,7 @@
     <span id="import_apply">割り当て</span>
     <span id="import_placeholder">ここに1行ずつテキストを入力／貼り付け（空行も可）</span>
     <span id="msg_import_done">インポートを反映しました</span>
+    <span id="opt_numbering">連番を付与</span>
   </div>
 
   <div class="stack" style="margin-bottom:16px">
@@ -111,7 +110,6 @@
   <div class="grid">
     <div class="stack">
       <div id="playerWrap"><div id="player"></div></div>
-      <!-- プレイヤー直下の追加ボタン -->
       <div class="row" id="playerActions">
         <button id="addBtn" type="button" disabled>現在位置でタイムスタンプ追加</button>
       </div>
@@ -140,9 +138,15 @@
         </div>
 
         <div class="previewArea">
-          <div class="row">
-            <button id="copyBtn" type="button" disabled>一覧をコピー</button>
-            <button id="clearBtn" type="button" disabled>すべて削除</button>
+          <div class="row" style="justify-content:space-between; width:100%;">
+            <label class="row" style="gap:6px; align-items:center;">
+              <input id="numberingChk" type="checkbox" />
+              <span id="numberingLabel">連番を付与</span>
+            </label>
+            <div class="row" style="gap:8px;">
+              <button id="copyBtn" type="button" disabled>一覧をコピー</button>
+              <button id="clearBtn" type="button" disabled>すべて削除</button>
+            </div>
           </div>
           <textarea id="preview" readonly placeholder="ここにコピー内容が表示されます"></textarea>
         </div>
@@ -187,32 +191,19 @@
   function $(sel){ return document.querySelector(sel); }
   function T(id){ var el=document.getElementById(id); return el? (el.textContent||'') : ''; }
   function statusMsg(msg){ var s=$('#status'); if(s) s.textContent=String(msg); }
+  function isNumbering(){ var c=$('#numberingChk'); return !!(c && c.checked); }
 
   // ===== Messages =====
-  var MSG_UNLOADED=T('msg_unloaded');
-  var MSG_LOADING =T('msg_loading');
-  var MSG_LOADED  =T('msg_loaded');
-  var MSG_ERROR   =T('msg_error');
-  var MSG_CONFIRM =T('confirm_text');
-  var PH_HINT     =T('ph_hint');
-  var DLG_TITLE   =T('dlg_title');
-  var DLG_LABEL   =T('dlg_label');
-  var BTN_SAVE    =T('btn_save');
-  var BTN_CANCEL  =T('btn_cancel');
-  var MSG_INVALID_TIME = T('invalid_time');
-  var MSG_COPIED       = T('msg_copied');
-  var MSG_COPY_FAILED  = T('msg_copy_failed');
-  var HINT_EDIT        = T('edit_hint');
-  var BTN_DELETE       = T('btn_delete');
-  var CONFIRM_CLEAR    = T('confirm_clear');
-  var ALERT_NEED_ID    = T('alert_need_id');
-  var ALERT_FILE_TYPES = T('alert_file_types');
-  var IMPORT_OPEN      = T('import_open');
-  var IMPORT_TITLE     = T('import_title');
-  var IMPORT_HINT      = T('import_hint');
-  var IMPORT_APPLY     = T('import_apply');
-  var IMPORT_PLACE     = T('import_placeholder');
-  var MSG_IMPORT_DONE  = T('msg_import_done');
+  var MSG_UNLOADED=T('msg_unloaded'), MSG_LOADING=T('msg_loading'), MSG_LOADED=T('msg_loaded'),
+      MSG_ERROR=T('msg_error'), MSG_CONFIRM=T('confirm_text'), PH_HINT=T('ph_hint'),
+      DLG_TITLE=T('dlg_title'), DLG_LABEL=T('dlg_label'), BTN_SAVE=T('btn_save'),
+      BTN_CANCEL=T('btn_cancel'), MSG_INVALID_TIME=T('invalid_time'),
+      MSG_COPIED=T('msg_copied'), MSG_COPY_FAILED=T('msg_copy_failed'),
+      HINT_EDIT=T('edit_hint'), BTN_DELETE=T('btn_delete'), CONFIRM_CLEAR=T('confirm_clear'),
+      ALERT_NEED_ID=T('alert_need_id'), ALERT_FILE_TYPES=T('alert_file_types'),
+      IMPORT_OPEN=T('import_open'), IMPORT_TITLE=T('import_title'), IMPORT_HINT=T('import_hint'),
+      IMPORT_APPLY=T('import_apply'), IMPORT_PLACE=T('import_placeholder'),
+      MSG_IMPORT_DONE=T('msg_import_done'), LABEL_NUMBERING=T('opt_numbering');
 
   // ===== State =====
   var mode='youtube';
@@ -301,10 +292,12 @@
     stamps = stamps.map(function(x){ return (typeof x==='number')? {time:x,label:''}:x; });
     stamps.sort(function(a,b){ return a.time-b.time; });
     var ul=$('#list'); if(!ul) return; ul.innerHTML='';
+    var numbered = isNumbering();
     for(var i=0;i<stamps.length;i++){
-      (function(item){
+      (function(item, idx){
         var li=document.createElement('li'); li.className='stamp';
-        var time=document.createElement('code'); time.className='time editable'; time.textContent=fmt(item.time);
+        var time=document.createElement('code'); time.className='time editable';
+        time.textContent=(numbered? (String(idx+1)+'. ') : '') + fmt(item.time);
         time.title=HINT_EDIT; time.setAttribute('role','button'); time.setAttribute('tabindex','0');
         time.addEventListener('dblclick', function(){ openEditModal(item); });
         time.addEventListener('keydown', function(e){ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); e.stopPropagation(); openEditModal(item); } });
@@ -314,15 +307,16 @@
         del.addEventListener('click', function(){ stamps=stamps.filter(function(x){ return x!==item; }); rebuildList(); buildPreview(); });
         li.appendChild(time); li.appendChild(title); li.appendChild(del);
         ul.appendChild(li);
-      })(stamps[i]);
+      })(stamps[i], i);
     }
     toggleEmptyTip();
     setControlsEnabled(mode==='youtube' ? isYTVideoReady : isFileReady);
     buildPreview();
   }
   function buildPreview(){
+    var numbered = isNumbering();
     var lines = stamps.slice().sort(function(a,b){ return a.time-b.time; })
-      .map(function(x){ return fmt(x.time) + (x.label? ' '+x.label : ''); });
+      .map(function(x, idx){ return (numbered? (String(idx+1)+'. ') : '') + fmt(x.time) + (x.label? ' '+x.label : ''); });
     var ta=$('#preview'); if(ta) ta.value = lines.join('\n');
   }
 
@@ -508,7 +502,7 @@
   var copyBtn=$('#copyBtn'); if(copyBtn){ copyBtn.addEventListener('click', function(){ var txt=$('#preview').value; navigator.clipboard.writeText(txt).then(function(){ statusMsg(MSG_COPIED); }).catch(function(){ try{ var ta=$('#preview'); ta.focus(); ta.select(); document.getSelection().removeAllRanges(); }catch(_){ } statusMsg(MSG_COPY_FAILED); }); }); }
   var clrBtn=$('#clearBtn'); if(clrBtn){ clrBtn.addEventListener('click', function(){ if(!stamps.length) return; if(!confirm(CONFIRM_CLEAR)) return; stamps=[]; rebuildList(); }); }
 
-  // ==== 編集モーダルのイベント（保存/キャンセル/キー操作/背景クリック）====
+  // 編集モーダル
   var iEdit   = document.querySelector('#editInput');
   var bSave   = document.querySelector('#editSave');
   var bCancel = document.querySelector('#editCancel');
@@ -524,6 +518,16 @@
   if (eModal){
     eModal.addEventListener('click', function(e){
       if (e.target === eModal) closeEditModal();
+    });
+  }
+
+  // 連番トグル
+  var numberingLabel=$('#numberingLabel'); if(numberingLabel) numberingLabel.textContent = LABEL_NUMBERING || '連番を付与';
+  var numberingChk=$('#numberingChk');
+  if(numberingChk){
+    numberingChk.addEventListener('change', function(){
+      rebuildList(); // リスト見た目の連番も更新
+      buildPreview(); // プレビューの連番も更新
     });
   }
 
