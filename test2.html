@@ -12,16 +12,26 @@
     input[type="text"] { flex: 1; min-width: 280px; }
     button { padding: 8px 12px; border: 1px solid #ddd; border-radius: 8px; cursor: pointer; }
     button:disabled { opacity: .5; cursor: not-allowed; }
-    #playerWrap { width: 720px; max-width: 100%; aspect-ratio: 16/9; background: #000; border-radius: 12px; overflow: hidden; position: relative; }
+
+    #playerWrap { width: 720px; max-width: 100%; aspect-ratio: 16/9; background: #000; border-radius: 12px; overflow: hidden; position: relative; justify-self: start; }
     #player { width: 100%; height: 100%; }
+
     .time { font-variant-numeric: tabular-nums; font-weight: 700; }
     .pill { background:#f5f5f5; border-radius:999px; padding:4px 8px; }
     ul { list-style: none; padding: 0; margin: 0; }
     li.stamp { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; padding: 8px; border: 1px solid #eee; border-radius: 10px; margin: 0; }
     .title { width: 100%; padding: 6px 8px; border: 1px solid #ddd; border-radius: 8px; min-width: 0; }
     .stack { display: grid; gap: 8px; }
+
     .grid { display: grid; gap: 20px; grid-template-columns: 1fr; }
-    @media (min-width: 900px) { .grid { grid-template-columns: 1fr 1fr; } }
+    @media (min-width: 900px) {
+      .grid {
+        grid-template-columns: max-content 1fr; /* 左=プレイヤー幅, 右=残り */
+        align-items: start;
+        justify-items: start;
+      }
+    }
+
     .hidden { display: none !important; }
     .tsgrid { display: grid; gap: 12px; grid-template-columns: 1fr; align-items: start; }
     @media (min-width: 700px) { .tsgrid { grid-template-columns: 1fr 1fr; } }
@@ -29,10 +39,12 @@
     .tsgrid .previewArea { display: grid; gap: 8px; }
     #list { display: flex; flex-direction: column; gap: 8px; margin: 0; max-height: 60vh; overflow-y: auto; overflow-x: hidden; align-items: stretch; justify-content: flex-start; }
     textarea { width: 100%; height: 140px; }
+
     .modal{position:fixed; inset:0; display:none; place-items:center; background:rgba(0,0,0,.4); z-index:1000;}
     .modal.show{display:grid;}
     .modalContent{background:#fff; width:520px; max-width:90vw; padding:16px; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,.2); display:grid; gap:12px;}
     .modalActions{display:flex; gap:8px; justify-content:flex-end;}
+
     .time.editable{cursor:pointer;background:#f8fafc;border:1px dashed #cbd5e1;padding:2px 8px;border-radius:8px;display:inline-flex;align-items:center;gap:6px;}
     .time.editable::after{content:"✎";font-size:.9em;opacity:.6}
     .time.editable:hover{background:#eef2ff;border-color:#94a3b8}
@@ -98,7 +110,7 @@
       <div id="playerWrap">
         <div id="player"></div>
       </div>
-      <!-- ★ プレイヤー直下に移動した「現在位置でタイムスタンプ追加」 -->
+      <!-- プレイヤー直下の追加ボタン -->
       <div class="row" id="playerActions">
         <button id="addBtn" type="button" disabled>現在位置でタイムスタンプ追加</button>
       </div>
@@ -192,7 +204,7 @@
   // ===== State =====
   var mode='youtube';
   var player=null, isYTReady=false, pendingVideoId='';
-  var isYTVideoReady=false; // 動画読み込み完了か
+  var isYTVideoReady=false; // YouTube動画が読み込まれたら true
   var fileEl=null, fileURL=null, isFileReady=false, fileLabel='';
   var stamps=[]; // { time:number, label:string }
   var useHMS=false;
@@ -232,7 +244,7 @@
         var st=player&&player.getPlayerState? player.getPlayerState():undefined;
         if(st===YT.PlayerState.PLAYING) current.pause(); else current.play();
       }catch(_){}
-    }else{
+    } else {
       if(fileEl){ if(fileEl.paused) current.play(); else current.pause(); }
     }
   }
@@ -255,7 +267,7 @@
     var elC=$('#editCancel'); if(elC) elC.textContent=BTN_CANCEL;
     var inp=$('#editInput'); if(inp){ inp.value=fmt(item.time); try{ inp.setSelectionRange(0, inp.value.length); }catch(_){} }
     var m=$('#editModal'); if(m){ m.classList.add('show'); }
-    if(inp){ try{ inp.focus(); }catch(_){ } }
+    if(inp){ try{ inp.focus(); }catch(_){} }
   }
   function closeEditModal(){ var m=$('#editModal'); if(m) m.classList.remove('show'); editTarget=null; }
   function saveEditModal(){
@@ -322,14 +334,14 @@
     closeImportModal();
   }
 
-  // ===== Ticking current time =====
+  // ===== Current time ticker =====
   function loopUpdateCurrentTime(){
     var t=current.getTime();
     var el=$('#currentTime'); if(el) el.textContent=isFinite(t)? fmt(t) : '00:00';
     requestAnimationFrame(loopUpdateCurrentTime);
   }
 
-  // ===== Space key toggle (outside inputs) =====
+  // ===== Space key toggle =====
   document.addEventListener('keydown', function(e){
     if(e.key === ' ' && !e.ctrlKey && !e.metaKey && !e.altKey){
       var tag=(e.target && e.target.tagName)||'';
@@ -402,9 +414,6 @@
       isFileReady=true; updateFormatMode(); setControlsEnabled(true);
       statusMsg(MSG_LOADED+': '+(fileLabel||v.currentSrc||'file'));
     });
-    v.addEventListener('play',  function(){});
-    v.addEventListener('pause', function(){});
-    v.addEventListener('ended', function(){});
     fileEl=v; return v;
   }
   function destroyFileVideo(){
@@ -524,6 +533,6 @@
   requestAnimationFrame(loopUpdateCurrentTime);
   setMode('youtube');
 })();
-</script>
+  </script>
 </body>
 </html>
