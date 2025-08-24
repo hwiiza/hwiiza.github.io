@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>タイムスタンプ作成ツール(プレビュー版)</title>
+  <style>
+    :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, "Hiragino Kaku Gothic ProN", Meiryo, sans-serif; }
+    body { margin: 24px; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    input[type="text"], textarea { padding: 8px; border: 1px solid #ddd; border-radius: 8px; }
+    input[type="text"] { flex: 1; min-width: 280px; }
+    button { padding: 8px 12px; border: 1px solid #ddd; border-radius: 8px; cursor: pointer; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    #playerWrap { width: 720px; max-width: 100%; aspect-ratio: 16/9; background: #000; border-radius: 12px; overflow: hidden; position: relative; }
+    #player { width: 100%; height: 100%; }
+    .time { font-variant-numeric: tabular-nums; font-weight: 700; }
+    .pill { background:#f5f5f5; border-radius:999px; padding:4px 8px; }
+    ul { list-style: none; padding: 0; margin: 0; }
+    li.stamp { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; padding: 8px; border: 1px solid #eee; border-radius: 10px; margin: 0; }
+    .title { width: 100%; padding: 6px 8px; border: 1px solid #ddd; border-radius: 8px; min-width: 0; }
+    .stack { display: grid; gap: 8px; }
+    .grid { display: grid; gap: 20px; grid-template-columns: 1fr; }
+    @media (min-width: 900px) { .grid { grid-template-columns: 1fr 1fr; } }
+    .hidden { display: none !important; }
+    .tsgrid { display: grid; gap: 12px; grid-template-columns: 1fr; align-items: start; }
+    @media (min-width: 700px) { .tsgrid { grid-template-columns: 1fr 1fr; } }
+    .tsgrid > * { align-self: start; min-width: 0; }
+    .tsgrid .previewArea { display: grid; gap: 8px; }
+    #list { display: flex; flex-direction: column; gap: 8px; margin: 0; max-height: 60vh; overflow-y: auto; overflow-x: hidden; align-items: stretch; justify-content: flex-start; }
+    textarea { width: 100%; height: 140px; }
+    .modal{position:fixed; inset:0; display:none; place-items:center; background:rgba(0,0,0,.4); z-index:1000;}
+  .modal.show{display:grid;}
+  .modalContent{background:#fff; width:320px; max-width:90vw; padding:16px; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,.2); display:grid; gap:12px;}
+  .modalActions{display:flex; gap:8px; justify-content:flex-end;}
+  .time.editable{cursor:pointer;background:#f8fafc;border:1px dashed #cbd5e1;padding:2px 8px;border-radius:8px;display:inline-flex;align-items:center;gap:6px;}
+  .time.editable::after{content:"¸E";font-size:.9em;opacity:.6}
+  .time.editable:hover{background:#eef2ff;border-color:#94a3b8}
+  .time.editable:focus-visible{outline:2px solid #60a5fa;outline-offset:2px}
+</style>
+</head>
+<body>
+  <h1>タイムスタンプ作成ツール(プレビュー版)</h1>
+
+  <!-- i18n dictionary (read by JS; keeps Japanese out of JS source) -->
+  <div id="i18n" class="hidden">
+    <span id="msg_unloaded">未読み込み</span>
+    <span id="msg_loading">読み込み中…</span>
+    <span id="msg_loaded">読み込み完了</span>
+    <span id="msg_error">エラー: </span>
+    <span id="btn_play">再生</span>
+    <span id="btn_pause">一時停止</span>
+    <span id="confirm_text">モードを切り替えると作成済みのタイムスタンプはすべて削除されます。よろしいですか？</span>
+    <span id="ph_hint">（任意）見出し</span>
+    <span id="dlg_title">タイムスタンプを編集</span>
+    <span id="dlg_label">時間 (mm:ss または hh:mm:ss)</span>
+    <span id="btn_save">保存</span>
+    <span id="btn_cancel">キャンセル</span>
+    <span id="invalid_time">無効な時間形式です。mm:ss または hh:mm:ss で入力してください。</span>
+    <span id="msg_copied">コピーしました</span>
+    <span id="msg_copy_failed">コピーに失敗</span>
+  </div>
+
+  <div class="stack" style="margin-bottom:16px">
+    <div class="row" id="modeRow">
+      <label><input type="radio" name="mode" value="youtube" checked> YouTube</label>
+      <label><input type="radio" name="mode" value="file"> ファイル</label>
+    </div>
+    <div class="row" id="ytControls">
+      <button id="ytLoadBtn" type="button">読み込み</button>
+      <input id="videoInput" type="text" placeholder="YouTubeのURL または 動画ID" />
+    </div>
+    <div class="row hidden" id="fileControls">
+      <button id="fileSelectBtn" type="button">ファイルを選択（mp4/mp3/wav）</button>
+      <input id="fileInput" type="file" accept="video/mp4,audio/mpeg,audio/wav" class="hidden" />
+    </div>
+    <div class="row">
+      <button id="toggleBtn" type="button" disabled>再生</button>
+      <button id="addBtn" type="button" disabled>現在位置でタイムスタンプ追加</button>
+      <span id="status" class="pill">未読み込み</span>
+    </div>
+    <div class="row">
+      <span>現在位置: <strong id="currentTime" class="time">00:00</strong></span>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="stack">
+      <div id="playerWrap">
+        <div id="player"></div>
+      </div>
+      <div class="hint">スペースキー: 再生/一時停止</div>
+    </div>
+
+    <div class="stack">
+      <div class="tsgrid">
+        <div class="listArea">
+          <div class="hint" style="font-size:12px;color:#64748b;">時間部分（✎付き）をダブルクリックで編集できます</div>
+          <ul id="list"></ul>
+        </div>
+        <div class="previewArea">
+          <div class="row">
+            <button id="copyBtn" type="button" disabled>一覧をコピー</button>
+            <button id="clearBtn" type="button" disabled>すべて削除</button>
+          </div>
+          <textarea id="preview" readonly placeholder="ここにコピー内容が表示されます"></textarea>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="editModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="dlgTitle">
+    <div class="modalContent">
+      <h3 id="dlgTitle">タイムスタンプを編集</h3>
+      <label class="row" style="justify-content:space-between; gap:12px">
+        <span id="dlgLabel">時間 (mm:ss または hh:mm:ss)</span>
+        <input id="editInput" type="text" inputmode="numeric" pattern="[0-9:]*" style="flex:0 1 160px" />
+      </label>
+      <div class="modalActions">
+        <button id="editCancel" type="button">キャンセル</button>
+        <button id="editSave" type="button">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+(function(){
+  'use strict';
+
+  // ===== Helpers (ASCII only in JS) =====
+  function $(sel){ return document.querySelector(sel); }
+  function T(id){ var el=document.getElementById(id); return el? (el.textContent||'') : ''; }
+  function statusMsg(msg){ var s=$('#status'); if(s) s.textContent=String(msg); }
+
+  // ===== Messages =====
+  var MSG_UNLOADED=T('msg_unloaded');
+  var MSG_LOADING =T('msg_loading');
+  var MSG_LOADED  =T('msg_loaded');
+  var MSG_ERROR   =T('msg_error');
+  var MSG_CONFIRM =T('confirm_text');
+  var BTN_PLAY    =T('btn_play');
+  var BTN_PAUSE   =T('btn_pause');
+  var PH_HINT     =T('ph_hint');
+  var DLG_TITLE   =T('dlg_title');
+  var DLG_LABEL   =T('dlg_label');
+  var BTN_SAVE    =T('btn_save');
+  var BTN_CANCEL  =T('btn_cancel');
+  var MSG_INVALID_TIME = T('invalid_time');
+  var MSG_COPIED       = T('msg_copied');
+  var MSG_COPY_FAILED  = T('msg_copy_failed');
+  var HINT_EDIT        = T('edit_hint');
+  var BTN_DELETE       = T('btn_delete');
+  var CONFIRM_CLEAR    = T('confirm_clear');
+  var ALERT_NEED_ID    = T('alert_need_id');
+  var ALERT_FILE_TYPES = T('alert_file_types');
+
+  // ===== State =====
+  var mode='youtube';
+  var player=null, isYTReady=false, pendingVideoId='';
+  var fileEl=null, fileURL=null, isFileReady=false, fileLabel='';
+  var stamps=[]; // { time:number, label:string }
+  var useHMS=false; // >=3600s -> hh:mm:ss
+
+  // ===== Time helpers =====
+  function fmt(sec){
+    if(!isFinite(sec)) return '--:--';
+    sec=Math.max(0, Math.floor(sec));
+    var h=Math.floor(sec/3600), m=Math.floor((sec%3600)/60), s=sec%60;
+    var mm=(m<10? '0'+m : ''+m), ss=(s<10? '0'+s : ''+s);
+    if(useHMS){ var hh=(h<10? '0'+h : ''+h); return hh+':'+mm+':'+ss; }
+    return mm+':'+ss;
+  }
+  function parseTime(str){
+    if(!str) return null; str=String(str).trim();
+    if(!/^[0-9:]+$/.test(str)) return null;
+    var parts=str.split(':'), h=0,m=0,s=0;
+    if(parts.length===3){ h=+parts[0]; m=+parts[1]; s=+parts[2]; }
+    else if(parts.length===2){ m=+parts[0]; s=+parts[1]; }
+    else if(parts.length===1){ s=+parts[0]; }
+    else return null;
+    if([h,m,s].some(function(x){ return !isFinite(x) || x<0; })) return null;
+    if(m>=60 || s>=60) return null;
+    return Math.floor(h*3600 + m*60 + s);
+  }
+
+  // Abstracted media adapter
+  var current={
+    play:function(){ if(mode==='youtube'){ try{ player.playVideo(); }catch(e){} } else if(fileEl){ try{ fileEl.play(); }catch(e){} } },
+    pause:function(){ if(mode==='youtube'){ try{ player.pauseVideo(); }catch(e){} } else if(fileEl){ try{ fileEl.pause(); }catch(e){} } },
+    getTime:function(){ if(mode==='youtube'){ return (player&&player.getCurrentTime)? player.getCurrentTime():0; } return (fileEl&&fileEl.currentTime)||0; },
+    getDuration:function(){ if(mode==='youtube'){ return (player&&player.getDuration)? player.getDuration():0; } return (fileEl&&isFinite(fileEl.duration))? fileEl.duration:0; }
+  };
+
+  function updateFormatMode(){ try{ useHMS = current.getDuration() >= 3600; }catch(e){} }
+  function setControlsEnabled(ready){
+    var t=$('#toggleBtn'); if(t) t.disabled=!ready;
+    var a=$('#addBtn'); if(a) a.disabled=!ready;
+    var c=$('#copyBtn'); if(c) c.disabled=(stamps.length===0);
+    var d=$('#clearBtn'); if(d) d.disabled=(stamps.length===0);
+  }
+
+  // ===== Edit Time Modal =====
+  var editTarget=null;
+  function openEditModal(item){
+    editTarget=item;
+    var elT=$('#dlgTitle'); if(elT) elT.textContent=DLG_TITLE;
+    var elL=$('#dlgLabel'); if(elL) elL.textContent=DLG_LABEL;
+    var elS=$('#editSave'); if(elS) elS.textContent=BTN_SAVE;
+    var elC=$('#editCancel'); if(elC) elC.textContent=BTN_CANCEL;
+    var inp=$('#editInput'); if(inp){ inp.value=fmt(item.time); try{ inp.setSelectionRange(0, inp.value.length); }catch(_){} }
+    var m=$('#editModal'); if(m){ m.classList.add('show'); }
+    if(inp){ try{ inp.focus(); }catch(_){} }
+  }
+  function closeEditModal(){ var m=$('#editModal'); if(m) m.classList.remove('show'); editTarget=null; }
+  function saveEditModal(){
+    var inp=$('#editInput'); var v=parseTime(inp? inp.value : '');
+    if(v===null){ alert(MSG_INVALID_TIME); return; }
+    var dur=current.getDuration(); if(isFinite(dur) && dur>0 && v>dur) v=Math.floor(dur);
+    if(editTarget){ editTarget.time=v; rebuildList(); }
+    closeEditModal();
+  }
+
+  // ===== List & Preview =====
+  function rebuildList(){
+    stamps = stamps.map(function(x){ return (typeof x==='number')? {time:x,label:''}:x; });
+    stamps.sort(function(a,b){ return a.time-b.time; });
+    var ul=$('#list'); if(!ul) return; ul.innerHTML='';
+    for(var i=0;i<stamps.length;i++){
+      (function(item){
+        var li=document.createElement('li'); li.className='stamp';
+        var time=document.createElement('code');
+        time.className='time editable';
+        time.textContent=fmt(item.time);
+        time.title=HINT_EDIT;
+        time.setAttribute('role','button');
+        time.setAttribute('tabindex','0');
+        time.addEventListener('dblclick', function(){ openEditModal(item); });
+        time.addEventListener('keydown', function(e){ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); e.stopPropagation(); openEditModal(item); } });
+        var title=document.createElement('input'); title.className='title'; title.value=item.label||''; title.placeholder=PH_HINT;
+        title.addEventListener('input', function(){ item.label=title.value; buildPreview(); });
+        var del=document.createElement('button'); del.textContent=BTN_DELETE;
+        del.addEventListener('click', function(){ stamps=stamps.filter(function(x){ return x!==item; }); rebuildList(); buildPreview(); });
+        li.appendChild(time); li.appendChild(title); li.appendChild(del);
+        ul.appendChild(li);
+      })(stamps[i]);
+    }
+    setControlsEnabled(mode==='youtube'? isYTReady : isFileReady);
+    buildPreview();
+  }
+
+  function buildPreview(){
+    var lines = stamps.slice().sort(function(a,b){ return a.time-b.time; }).map(function(x){ return fmt(x.time) + (x.label? ' '+x.label : ''); });
+    var ta=$('#preview'); if(ta) ta.value = lines.join('
+');
+  }
+
+  function loopUpdateCurrentTime(){
+    var t=current.getTime();
+    var el=$('#currentTime'); if(el) el.textContent=isFinite(t)? fmt(t) : '00:00';
+    requestAnimationFrame(loopUpdateCurrentTime);
+  }
+
+  // ===== YouTube IFrame API =====
+  (function loadYT(){
+    var tag=document.createElement('script'); tag.src='https://www.youtube.com/iframe_api'; tag.async=true;
+    tag.onerror=function(){ statusMsg('YouTube API load failed'); };
+    document.head.appendChild(tag);
+  })();
+
+  window.onYouTubeIframeAPIReady = function(){
+    player = new YT.Player('player', {
+      height:'100%', width:'100%', videoId:'',
+      playerVars:{ playsinline:1, origin: location.origin, enablejsapi:1 },
+      events:{ onReady:onReady, onStateChange:onStateChange, onError:onError }
+    });
+  };
+
+  function onReady(){
+    isYTReady=true; statusMsg(MSG_UNLOADED); updateFormatMode(); setControlsEnabled(mode==='youtube');
+    if(pendingVideoId){ try{ player.cueVideoById(pendingVideoId); }catch(e){} pendingVideoId=''; }
+  }
+  function onStateChange(e){
+    if(!e) return;
+    if(e.data===YT.PlayerState.CUED){
+      updateFormatMode(); if(mode==='youtube') setControlsEnabled(true);
+      try{ var d=player.getVideoData&&player.getVideoData(); var title=d&&d.title; statusMsg(title? (MSG_LOADED+': '+title) : MSG_LOADED); }catch(_){ statusMsg(MSG_LOADED); }
+      var t=$('#toggleBtn'); if(t&&mode==='youtube') t.textContent=BTN_PLAY;
+    } else if(e.data===YT.PlayerState.PLAYING){ var t1=$('#toggleBtn'); if(t1&&mode==='youtube') t1.textContent=BTN_PAUSE; }
+      else if(e.data===YT.PlayerState.PAUSED || e.data===YT.PlayerState.ENDED){ var t2=$('#toggleBtn'); if(t2&&mode==='youtube') t2.textContent=BTN_PLAY; }
+  }
+  function onError(e){ statusMsg(MSG_ERROR + (e&&e.data)); }
+
+  function ensureCueOrLoad(id,phase){
+    try{ var st=player&&player.getPlayerState? player.getPlayerState():undefined; if(st===YT.PlayerState.CUED||st===YT.PlayerState.PAUSED||st===YT.PlayerState.PLAYING) return; }catch(_){ }
+    if(phase===0){ try{ player.loadVideoById(id); }catch(_){ } setTimeout(function(){ try{ player.pauseVideo(); }catch(_){ } },500); setTimeout(function(){ ensureCueOrLoad(id,1); },1400); }
+    else if(phase===1){ try{ player.cueVideoById(id); }catch(_){ } }
+  }
+
+  // ===== File playback =====
+  function createFileVideo(){
+    if(fileEl) return fileEl;
+    var v=document.createElement('video'); v.setAttribute('playsinline',''); v.preload='metadata'; v.controls=true; v.style.width='100%'; v.style.height='100%'; v.id='fileMedia';
+    var wrap=$('#playerWrap'); wrap.appendChild(v);
+    v.addEventListener('loadedmetadata', function(){ isFileReady=true; updateFormatMode(); setControlsEnabled(true); statusMsg(MSG_LOADED+': '+(fileLabel||v.currentSrc||'file')); var t=$('#toggleBtn'); if(t&&mode==='file') t.textContent=BTN_PLAY; });
+    v.addEventListener('play',  function(){ var t=$('#toggleBtn'); if(t&&mode==='file') t.textContent=BTN_PAUSE; });
+    v.addEventListener('pause', function(){ var t=$('#toggleBtn'); if(t&&mode==='file') t.textContent=BTN_PLAY;  });
+    v.addEventListener('ended', function(){ var t=$('#toggleBtn'); if(t&&mode==='file') t.textContent=BTN_PLAY;  });
+    fileEl=v; return v;
+  }
+  function destroyFileVideo(){
+    try{ if(fileEl){ try{ fileEl.pause(); }catch(_){ } if(fileURL){ try{ URL.revokeObjectURL(fileURL); }catch(_){ } fileURL=null; } fileEl.removeAttribute('src'); fileEl.load(); fileEl.remove(); fileEl=null; } }catch(_){ }
+    isFileReady=false; fileLabel='';
+  }
+
+  // ===== Actions =====
+  function loadYouTube(){
+    mode='youtube'; destroyFileVideo(); var p=$('#player'); if(p) p.style.display='';
+    var vi=$('#videoInput'); var raw=vi? (vi.value||'').trim() : ''; var id=parseVideoId(raw);
+    if(!id){ alert(ALERT_NEED_ID); return; }
+    setControlsEnabled(false); statusMsg(MSG_LOADING);
+    if(isYTReady){ try{ player.cueVideoById(id); }catch(_){ } } else { pendingVideoId=id; }
+    setTimeout(function(){ try{ ensureCueOrLoad(id,0); }catch(_){ } },1200);
+  }
+  function selectFile(){ var fin=$('#fileInput'); if(!fin) return; fin.value=''; fin.click(); }
+  function handleFileChosen(f){
+    if(!f) return;
+    var ok=/\.(mp4|mp3|wav)$/i.test(f.name); if(!ok){ alert(ALERT_FILE_TYPES); return; }
+    mode='file'; fileLabel=f.name||''; var p=$('#player'); if(p) p.style.display='none';
+    var v=createFileVideo(); if(fileURL){ try{ URL.revokeObjectURL(fileURL); }catch(_){ } fileURL=null; }
+    fileURL=URL.createObjectURL(f); v.src=fileURL; v.load(); statusMsg(MSG_LOADING);
+  }
+
+  // ===== Mode switch =====
+  function setMode(newMode){
+    mode=newMode; var ytC=$('#ytControls'); var fC=$('#fileControls');
+    if(ytC){ ytC.classList.toggle('hidden', mode!=='youtube'); ytC.style.display=(mode==='youtube')? '' : 'none'; }
+    if(fC){  fC.classList.toggle('hidden',  mode!=='file');    fC.style.display=(mode==='file')? '' : 'none'; }
+    if(mode==='youtube'){
+      destroyFileVideo(); var p1=$('#player'); if(p1) p1.style.display=''; setControlsEnabled(isYTReady); statusMsg(MSG_UNLOADED); var t1=$('#toggleBtn'); if(t1) t1.textContent=BTN_PLAY;
+    } else {
+      var p2=$('#player'); if(p2) p2.style.display='none'; setControlsEnabled(isFileReady); if(!isFileReady) statusMsg(MSG_UNLOADED); var t2=$('#toggleBtn'); if(t2) t2.textContent=BTN_PLAY;
+    }
+  }
+  function requestModeChange(nextMode){
+    if(nextMode===mode) return;
+    if(stamps && stamps.length>0){
+      var ok=confirm(MSG_CONFIRM);
+      if(!ok){
+        try{ var prev=document.querySelector('input[name="mode"][value="'+mode+'"]'); if(prev) prev.checked=true; var other=document.querySelector('input[name="mode"][value="'+nextMode+'"]'); if(other) other.checked=false; }catch(_){ }
+        return;
+      }
+      stamps=[]; rebuildList();
+    }
+    setMode(nextMode);
+  }
+
+  // ===== Wire up UI =====
+  var modeRadios=document.getElementsByName('mode');
+  for(var i=0;i<modeRadios.length;i++){ modeRadios[i].addEventListener('change', function(e){ requestModeChange(e.target.value); }); }
+  var ytBtn=$('#ytLoadBtn'); if(ytBtn){ ytBtn.addEventListener('click', loadYouTube); }
+  var fsBtn=$('#fileSelectBtn'); if(fsBtn){ fsBtn.addEventListener('click', selectFile); }
+  var fin=$('#fileInput'); if(fin){ fin.addEventListener('change', function(e){ var f=e.target.files && e.target.files[0]; handleFileChosen(f); }); }
+  var vi=$('#videoInput'); if(vi){ vi.addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); loadYouTube(); } }); }
+
+  var tgl=$('#toggleBtn'); if(tgl){ tgl.addEventListener('click', function(){ if(mode==='youtube'){ var st=player&&player.getPlayerState? player.getPlayerState():undefined; if(st===YT.PlayerState.PLAYING) current.pause(); else current.play(); } else { if(fileEl){ if(fileEl.paused) current.play(); else current.pause(); } } }); }
+  var addBtn=$('#addBtn'); if(addBtn){ addBtn.addEventListener('click', function(){ var t=current.getTime(); if(!isFinite(t)) return; stamps.push({time:t,label:''}); rebuildList(); }); }
+  var copyBtn=$('#copyBtn'); if(copyBtn){ copyBtn.addEventListener('click', function(){ var txt=$('#preview').value; navigator.clipboard.writeText(txt).then(function(){ statusMsg(MSG_COPIED); }).catch(function(){ try{ var ta=$('#preview'); ta.focus(); ta.select(); document.getSelection().removeAllRanges(); }catch(_){ } statusMsg(MSG_COPY_FAILED); }); }); }
+  var clrBtn=$('#clearBtn'); if(clrBtn){ clrBtn.addEventListener('click', function(){ if(!stamps.length) return; if(!confirm(CONFIRM_CLEAR)) return; stamps=[]; rebuildList(); }); }
+
+  // Modal events
+  var iEdit=$('#editInput'); var bSave=$('#editSave'); var bCancel=$('#editCancel'); var modal=$('#editModal');
+  if(bSave) bSave.addEventListener('click', saveEditModal);
+  if(bCancel) bCancel.addEventListener('click', closeEditModal);
+  if(iEdit){ iEdit.addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); saveEditModal(); } else if(e.key==='Escape'){ e.preventDefault(); closeEditModal(); } }); }
+  if(modal){ modal.addEventListener('click', function(e){ if(e.target===modal) closeEditModal(); }); }
+
+  function parseVideoId(input){
+    if(!input) return '';
+    var raw=input.trim();
+    if(/^[a-zA-Z0-9_-]{10,}$/.test(raw) && raw.indexOf('http')===-1) return raw;
+    try{ var u=new URL(raw); var host=u.hostname.replace(/^www\./,''); var segs=u.pathname.split('/').filter(function(x){ return x; }); if(host.indexOf('youtu.be')!==-1 && segs[0]) return segs[0]; var v=u.searchParams.get('v'); if(v) return v; if(segs[0]==='shorts' && segs[1]) return segs[1]; if(segs[0]==='embed' && segs[1]) return segs[1]; if(segs.length) return segs[segs.length-1]; }catch(_){ return raw; }
+    return raw;
+  }
+
+  // Start
+  requestAnimationFrame(loopUpdateCurrentTime);
+  setMode('youtube');
+})();
+</script>
+</body>
+</html>
