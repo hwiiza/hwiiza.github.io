@@ -54,6 +54,10 @@
     .time.editable::after{content:"✎";font-size:.9em;opacity:.6}
     .time.editable:hover{background:#eef2ff;border-color:#94a3b8}
     .time.editable:focus-visible{outline:2px solid #60a5fa;outline-offset:2px}
+
+    /* ラジオ並び用 */
+    .numRadios { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    .numRadios label { display:inline-flex; align-items:center; gap:6px; }
   </style>
 </head>
 <body>
@@ -145,14 +149,12 @@
 
         <div class="previewArea">
           <div class="row" style="justify-content:space-between; width:100%;">
-            <label class="row" style="gap:6px; align-items:center;">
+            <div class="numRadios" id="numberingRadiosWrap" role="radiogroup" aria-label="連番">
               <span id="numberingLabel">連番</span>
-              <select id="numberingMode">
-                <option value="none">無し</option>
-                <option value="head">先頭につける</option>
-                <option value="beforeTitle">見出しの前につける</option>
-              </select>
-            </label>
+              <label><input type="radio" name="numbering" value="none" checked> <span id="numLblNone">無し</span></label>
+              <label><input type="radio" name="numbering" value="head"> <span id="numLblHead">先頭につける</span></label>
+              <label><input type="radio" name="numbering" value="beforeTitle"> <span id="numLblBefore">見出しの前につける</span></label>
+            </div>
             <div class="row" style="gap:8px;">
               <button id="copyBtn" type="button" disabled>一覧をコピー</button>
               <button id="clearBtn" type="button" disabled>すべて削除</button>
@@ -201,7 +203,10 @@
   function $(sel){ return document.querySelector(sel); }
   function T(id){ var el=document.getElementById(id); return el? (el.textContent||'') : ''; }
   function statusMsg(msg){ var s=$('#status'); if(s) s.textContent=String(msg); }
-  function numberingMode(){ var s=$('#numberingMode'); return s ? (s.value||'none') : 'none'; }
+  function numberingMode(){
+    var r=document.querySelector('input[name="numbering"]:checked');
+    return r ? r.value : 'none';
+  }
 
   // ===== Messages =====
   var MSG_UNLOADED=T('msg_unloaded');
@@ -231,7 +236,7 @@
   var LBL_NUM          = T('opt_numbering_label');
   var LBL_NUM_NONE     = T('opt_numbering_none');
   var LBL_NUM_HEAD     = T('opt_numbering_head');
-  var LBL_NUM_BTITLE   = T('opt_numbering_before_title'); // ← 文言は「見出しの前につける」
+  var LBL_NUM_BTITLE   = T('opt_numbering_before_title');
 
   // ===== State =====
   var mode='youtube';
@@ -510,7 +515,7 @@
   // ===== Mode switch =====
   function setMode(newMode){
     mode=newMode;
-    var ytC=$('#ytControls'); var fC=$('#fileControls']);
+    var ytC=$('#ytControls'); var fC=$('#fileControls');
     if(ytC){ ytC.classList.toggle('hidden', mode!=='youtube'); ytC.style.display=(mode==='youtube')? '' : 'none'; }
     if(fC){  fC.classList.toggle('hidden',  mode!=='file');    fC.style.display=(mode==='file')? '' : 'none'; }
     if(mode==='youtube'){
@@ -571,20 +576,14 @@
     });
   }
 
-  // 連番UI i18n適用＆変更時の再描画
+  // 連番ラジオ i18n 適用 & 変更時再描画
   var numberingLabelEl=$('#numberingLabel'); if(numberingLabelEl) numberingLabelEl.textContent = LBL_NUM || '連番';
-  var numberingSel=$('#numberingMode');
-  if(numberingSel){
-    try{
-      numberingSel.querySelector('option[value="none"]').textContent = LBL_NUM_NONE || '無し';
-      numberingSel.querySelector('option[value="head"]').textContent = LBL_NUM_HEAD || '先頭につける';
-      numberingSel.querySelector('option[value="beforeTitle"]').textContent = LBL_NUM_BTITLE || '見出しの前につける';
-    }catch(_){}
-    numberingSel.addEventListener('change', function(){
-      rebuildList();
-      buildPreview();
-    });
-  }
+  var numLblNone=$('#numLblNone'); if(numLblNone) numLblNone.textContent = LBL_NUM_NONE || '無し';
+  var numLblHead=$('#numLblHead'); if(numLblHead) numLblHead.textContent = LBL_NUM_HEAD || '先頭につける';
+  var numLblBefore=$('#numLblBefore'); if(numLblBefore) numLblBefore.textContent = LBL_NUM_BTITLE || '見出しの前につける';
+
+  var radios=document.querySelectorAll('input[name="numbering"]');
+  radios.forEach(function(r){ r.addEventListener('change', function(){ rebuildList(); buildPreview(); }); });
 
   // Import modal events
   var openImportBtn=$('#openImportBtn');
