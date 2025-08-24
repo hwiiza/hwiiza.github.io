@@ -19,11 +19,13 @@
     .time { font-variant-numeric: tabular-nums; font-weight: 700; }
     .pill { background:#f5f5f5; border-radius:999px; padding:4px 8px; }
     ul { list-style: none; padding: 0; margin: 0; }
-    li.stamp { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; padding: 8px; border: 1px solid #eee; border-radius: 10px; margin: 0; }
+    /* time | number | title | delete */
+    li.stamp { display: grid; grid-template-columns: auto auto 1fr auto; gap: 8px; align-items: center; padding: 8px; border: 1px solid #eee; border-radius: 10px; margin: 0; }
+    .num { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; min-width: 2.2ch; text-align: right; opacity:.7; }
     .title { width: 100%; padding: 6px 8px; border: 1px solid #ddd; border-radius: 8px; min-width: 0; }
     .stack { display: grid; gap: 8px; }
 
-    /* 左=プレイヤー幅、右=残り。大画面で“左詰め” */
+    /* 大画面で左詰め */
     .grid { display: grid; gap: 20px; grid-template-columns: 1fr; }
     @media (min-width: 900px) {
       .grid { grid-template-columns: max-content 1fr; align-items: start; justify-items: start; }
@@ -83,7 +85,11 @@
     <span id="import_apply">割り当て</span>
     <span id="import_placeholder">ここに1行ずつテキストを入力／貼り付け（空行も可）</span>
     <span id="msg_import_done">インポートを反映しました</span>
-    <span id="opt_numbering">連番を付与</span>
+    <!-- 連番 i18n -->
+    <span id="opt_numbering_label">連番</span>
+    <span id="opt_numbering_none">無し</span>
+    <span id="opt_numbering_head">先頭につける</span>
+    <span id="opt_numbering_before_title">見出しの前につける</span>
   </div>
 
   <div class="stack" style="margin-bottom:16px">
@@ -140,8 +146,12 @@
         <div class="previewArea">
           <div class="row" style="justify-content:space-between; width:100%;">
             <label class="row" style="gap:6px; align-items:center;">
-              <input id="numberingChk" type="checkbox" />
-              <span id="numberingLabel">連番を付与</span>
+              <span id="numberingLabel">連番</span>
+              <select id="numberingMode">
+                <option value="none">無し</option>
+                <option value="head">先頭につける</option>
+                <option value="beforeTitle">見出しの前につける</option>
+              </select>
             </label>
             <div class="row" style="gap:8px;">
               <button id="copyBtn" type="button" disabled>一覧をコピー</button>
@@ -191,24 +201,42 @@
   function $(sel){ return document.querySelector(sel); }
   function T(id){ var el=document.getElementById(id); return el? (el.textContent||'') : ''; }
   function statusMsg(msg){ var s=$('#status'); if(s) s.textContent=String(msg); }
-  function isNumbering(){ var c=$('#numberingChk'); return !!(c && c.checked); }
+  function numberingMode(){ var s=$('#numberingMode'); return s ? (s.value||'none') : 'none'; }
 
   // ===== Messages =====
-  var MSG_UNLOADED=T('msg_unloaded'), MSG_LOADING=T('msg_loading'), MSG_LOADED=T('msg_loaded'),
-      MSG_ERROR=T('msg_error'), MSG_CONFIRM=T('confirm_text'), PH_HINT=T('ph_hint'),
-      DLG_TITLE=T('dlg_title'), DLG_LABEL=T('dlg_label'), BTN_SAVE=T('btn_save'),
-      BTN_CANCEL=T('btn_cancel'), MSG_INVALID_TIME=T('invalid_time'),
-      MSG_COPIED=T('msg_copied'), MSG_COPY_FAILED=T('msg_copy_failed'),
-      HINT_EDIT=T('edit_hint'), BTN_DELETE=T('btn_delete'), CONFIRM_CLEAR=T('confirm_clear'),
-      ALERT_NEED_ID=T('alert_need_id'), ALERT_FILE_TYPES=T('alert_file_types'),
-      IMPORT_OPEN=T('import_open'), IMPORT_TITLE=T('import_title'), IMPORT_HINT=T('import_hint'),
-      IMPORT_APPLY=T('import_apply'), IMPORT_PLACE=T('import_placeholder'),
-      MSG_IMPORT_DONE=T('msg_import_done'), LABEL_NUMBERING=T('opt_numbering');
+  var MSG_UNLOADED=T('msg_unloaded');
+  var MSG_LOADING =T('msg_loading');
+  var MSG_LOADED  =T('msg_loaded');
+  var MSG_ERROR   =T('msg_error');
+  var MSG_CONFIRM =T('confirm_text');
+  var PH_HINT     =T('ph_hint');
+  var DLG_TITLE   =T('dlg_title');
+  var DLG_LABEL   =T('dlg_label');
+  var BTN_SAVE    =T('btn_save');
+  var BTN_CANCEL  =T('btn_cancel');
+  var MSG_INVALID_TIME = T('invalid_time');
+  var MSG_COPIED       = T('msg_copied');
+  var MSG_COPY_FAILED  = T('msg_copy_failed');
+  var HINT_EDIT        = T('edit_hint');
+  var BTN_DELETE       = T('btn_delete');
+  var CONFIRM_CLEAR    = T('confirm_clear');
+  var ALERT_NEED_ID    = T('alert_need_id');
+  var ALERT_FILE_TYPES = T('alert_file_types');
+  var IMPORT_OPEN      = T('import_open');
+  var IMPORT_TITLE     = T('import_title');
+  var IMPORT_HINT      = T('import_hint');
+  var IMPORT_APPLY     = T('import_apply');
+  var IMPORT_PLACE     = T('import_placeholder');
+  var MSG_IMPORT_DONE  = T('msg_import_done');
+  var LBL_NUM          = T('opt_numbering_label');
+  var LBL_NUM_NONE     = T('opt_numbering_none');
+  var LBL_NUM_HEAD     = T('opt_numbering_head');
+  var LBL_NUM_BTITLE   = T('opt_numbering_before_title'); // ← 文言は「見出しの前につける」
 
   // ===== State =====
   var mode='youtube';
   var player=null, isYTReady=false, pendingVideoId='';
-  var isYTVideoReady=false; // 動画読み込み完了か
+  var isYTVideoReady=false;
   var fileEl=null, fileURL=null, isFileReady=false, fileLabel='';
   var stamps=[]; // { time:number, label:string }
   var useHMS=false;
@@ -288,35 +316,57 @@
     empty.style.display = stamps.length ? 'none' : '';
     empty.setAttribute('aria-hidden', stamps.length ? 'true' : 'false');
   }
+
   function rebuildList(){
     stamps = stamps.map(function(x){ return (typeof x==='number')? {time:x,label:''}:x; });
     stamps.sort(function(a,b){ return a.time-b.time; });
+
     var ul=$('#list'); if(!ul) return; ul.innerHTML='';
-    var numbered = isNumbering();
+    var modeNum = numberingMode();
+
     for(var i=0;i<stamps.length;i++){
       (function(item, idx){
         var li=document.createElement('li'); li.className='stamp';
+
         var time=document.createElement('code'); time.className='time editable';
-        time.textContent=(numbered? (String(idx+1)+'. ') : '') + fmt(item.time);
+        // 「先頭につける」→ 連番(数字のみ) + 半角スペース + mm:ss
+        time.textContent=(modeNum==='head'? (String(idx+1)+' ') : '') + fmt(item.time);
         time.title=HINT_EDIT; time.setAttribute('role','button'); time.setAttribute('tabindex','0');
         time.addEventListener('dblclick', function(){ openEditModal(item); });
         time.addEventListener('keydown', function(e){ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); e.stopPropagation(); openEditModal(item); } });
+
+        // 「見出しの前につける」→ number列に数字のみを表示
+        var num=document.createElement('span'); num.className='num';
+        num.textContent = String(idx+1);
+        num.style.display = (modeNum==='beforeTitle')? '' : 'none';
+
         var title=document.createElement('input'); title.className='title'; title.value=item.label||''; title.placeholder=PH_HINT;
         title.addEventListener('input', function(){ item.label=title.value; buildPreview(); });
+
         var del=document.createElement('button'); del.textContent=BTN_DELETE;
         del.addEventListener('click', function(){ stamps=stamps.filter(function(x){ return x!==item; }); rebuildList(); buildPreview(); });
-        li.appendChild(time); li.appendChild(title); li.appendChild(del);
+
+        li.appendChild(time); li.appendChild(num); li.appendChild(title); li.appendChild(del);
         ul.appendChild(li);
       })(stamps[i], i);
     }
+
     toggleEmptyTip();
     setControlsEnabled(mode==='youtube' ? isYTVideoReady : isFileReady);
     buildPreview();
   }
+
   function buildPreview(){
-    var numbered = isNumbering();
+    var modeNum = numberingMode();
     var lines = stamps.slice().sort(function(a,b){ return a.time-b.time; })
-      .map(function(x, idx){ return (numbered? (String(idx+1)+'. ') : '') + fmt(x.time) + (x.label? ' '+x.label : ''); });
+      .map(function(x, idx){
+        var n = String(idx+1); // 数字のみ
+        var t = fmt(x.time);
+        var lbl = x.label? ' '+x.label : '';
+        if(modeNum==='head')        return n+' '+t+lbl;       // 1 00:00 タイトル
+        if(modeNum==='beforeTitle') return t+' '+n+lbl;       // 00:00 1 タイトル
+        return t+lbl;                                         // 00:00 タイトル
+      });
     var ta=$('#preview'); if(ta) ta.value = lines.join('\n');
   }
 
@@ -460,7 +510,7 @@
   // ===== Mode switch =====
   function setMode(newMode){
     mode=newMode;
-    var ytC=$('#ytControls'); var fC=$('#fileControls');
+    var ytC=$('#ytControls'); var fC=$('#fileControls']);
     if(ytC){ ytC.classList.toggle('hidden', mode!=='youtube'); ytC.style.display=(mode==='youtube')? '' : 'none'; }
     if(fC){  fC.classList.toggle('hidden',  mode!=='file');    fC.style.display=(mode==='file')? '' : 'none'; }
     if(mode==='youtube'){
@@ -521,13 +571,18 @@
     });
   }
 
-  // 連番トグル
-  var numberingLabel=$('#numberingLabel'); if(numberingLabel) numberingLabel.textContent = LABEL_NUMBERING || '連番を付与';
-  var numberingChk=$('#numberingChk');
-  if(numberingChk){
-    numberingChk.addEventListener('change', function(){
-      rebuildList(); // リスト見た目の連番も更新
-      buildPreview(); // プレビューの連番も更新
+  // 連番UI i18n適用＆変更時の再描画
+  var numberingLabelEl=$('#numberingLabel'); if(numberingLabelEl) numberingLabelEl.textContent = LBL_NUM || '連番';
+  var numberingSel=$('#numberingMode');
+  if(numberingSel){
+    try{
+      numberingSel.querySelector('option[value="none"]').textContent = LBL_NUM_NONE || '無し';
+      numberingSel.querySelector('option[value="head"]').textContent = LBL_NUM_HEAD || '先頭につける';
+      numberingSel.querySelector('option[value="beforeTitle"]').textContent = LBL_NUM_BTITLE || '見出しの前につける';
+    }catch(_){}
+    numberingSel.addEventListener('change', function(){
+      rebuildList();
+      buildPreview();
     });
   }
 
@@ -567,7 +622,7 @@
 
   // Start
   requestAnimationFrame(loopUpdateCurrentTime);
-  toggleEmptyTip(); // 初期表示：空状態カードを見せる
+  toggleEmptyTip();
   setMode('youtube');
 })();
   </script>
