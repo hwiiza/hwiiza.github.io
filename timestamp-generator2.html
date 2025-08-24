@@ -19,11 +19,13 @@
     .time { font-variant-numeric: tabular-nums; font-weight: 700; }
     .pill { background:#f5f5f5; border-radius:999px; padding:4px 8px; }
     ul { list-style: none; padding: 0; margin: 0; }
-    li.stamp { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; padding: 8px; border: 1px solid #eee; border-radius: 10px; margin: 0; }
+    /* time | number | title | delete */
+    li.stamp { display: grid; grid-template-columns: auto auto 1fr auto; gap: 8px; align-items: center; padding: 8px; border: 1px solid #eee; border-radius: 10px; margin: 0; }
+    .num { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; min-width: 2.2ch; text-align: right; opacity:.7; }
     .title { width: 100%; padding: 6px 8px; border: 1px solid #ddd; border-radius: 8px; min-width: 0; }
     .stack { display: grid; gap: 8px; }
 
-    /* 左=プレイヤー幅、右=残り。大画面で“左詰め” */
+    /* 大画面で左詰め */
     .grid { display: grid; gap: 20px; grid-template-columns: 1fr; }
     @media (min-width: 900px) {
       .grid { grid-template-columns: max-content 1fr; align-items: start; justify-items: start; }
@@ -52,6 +54,10 @@
     .time.editable::after{content:"✎";font-size:.9em;opacity:.6}
     .time.editable:hover{background:#eef2ff;border-color:#94a3b8}
     .time.editable:focus-visible{outline:2px solid #60a5fa;outline-offset:2px}
+
+    /* ラジオ並び用 */
+    .numRadios { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    .numRadios label { display:inline-flex; align-items:center; gap:6px; }
   </style>
 </head>
 <body>
@@ -63,8 +69,6 @@
     <span id="msg_loading">読み込み中…</span>
     <span id="msg_loaded">読み込み完了</span>
     <span id="msg_error">エラー: </span>
-    <span id="btn_play">再生</span>
-    <span id="btn_pause">一時停止</span>
     <span id="confirm_text">モードを切り替えると作成済みのタイムスタンプはすべて削除されます。よろしいですか？</span>
     <span id="ph_hint">（任意）見出し</span>
     <span id="dlg_title">タイムスタンプを編集</span>
@@ -85,6 +89,11 @@
     <span id="import_apply">割り当て</span>
     <span id="import_placeholder">ここに1行ずつテキストを入力／貼り付け（空行も可）</span>
     <span id="msg_import_done">インポートを反映しました</span>
+    <!-- 連番 i18n -->
+    <span id="opt_numbering_label">連番</span>
+    <span id="opt_numbering_none">無し</span>
+    <span id="opt_numbering_head">先頭につける</span>
+    <span id="opt_numbering_before_title">見出しの前につける</span>
   </div>
 
   <div class="stack" style="margin-bottom:16px">
@@ -111,7 +120,6 @@
   <div class="grid">
     <div class="stack">
       <div id="playerWrap"><div id="player"></div></div>
-      <!-- プレイヤー直下の追加ボタン -->
       <div class="row" id="playerActions">
         <button id="addBtn" type="button" disabled>現在位置でタイムスタンプ追加</button>
       </div>
@@ -140,9 +148,17 @@
         </div>
 
         <div class="previewArea">
-          <div class="row">
-            <button id="copyBtn" type="button" disabled>一覧をコピー</button>
-            <button id="clearBtn" type="button" disabled>すべて削除</button>
+          <div class="row" style="justify-content:space-between; width:100%;">
+            <div class="numRadios" id="numberingRadiosWrap" role="radiogroup" aria-label="連番">
+              <span id="numberingLabel">連番</span>
+              <label><input type="radio" name="numbering" value="none" checked> <span id="numLblNone">無し</span></label>
+              <label><input type="radio" name="numbering" value="head"> <span id="numLblHead">先頭につける</span></label>
+              <label><input type="radio" name="numbering" value="beforeTitle"> <span id="numLblBefore">見出しの前につける</span></label>
+            </div>
+            <div class="row" style="gap:8px;">
+              <button id="copyBtn" type="button" disabled>一覧をコピー</button>
+              <button id="clearBtn" type="button" disabled>すべて削除</button>
+            </div>
           </div>
           <textarea id="preview" readonly placeholder="ここにコピー内容が表示されます"></textarea>
         </div>
@@ -187,6 +203,10 @@
   function $(sel){ return document.querySelector(sel); }
   function T(id){ var el=document.getElementById(id); return el? (el.textContent||'') : ''; }
   function statusMsg(msg){ var s=$('#status'); if(s) s.textContent=String(msg); }
+  function numberingMode(){
+    var r=document.querySelector('input[name="numbering"]:checked');
+    return r ? r.value : 'none';
+  }
 
   // ===== Messages =====
   var MSG_UNLOADED=T('msg_unloaded');
@@ -213,11 +233,15 @@
   var IMPORT_APPLY     = T('import_apply');
   var IMPORT_PLACE     = T('import_placeholder');
   var MSG_IMPORT_DONE  = T('msg_import_done');
+  var LBL_NUM          = T('opt_numbering_label');
+  var LBL_NUM_NONE     = T('opt_numbering_none');
+  var LBL_NUM_HEAD     = T('opt_numbering_head');
+  var LBL_NUM_BTITLE   = T('opt_numbering_before_title');
 
   // ===== State =====
   var mode='youtube';
   var player=null, isYTReady=false, pendingVideoId='';
-  var isYTVideoReady=false; // 動画読み込み完了か
+  var isYTVideoReady=false;
   var fileEl=null, fileURL=null, isFileReady=false, fileLabel='';
   var stamps=[]; // { time:number, label:string }
   var useHMS=false;
@@ -297,32 +321,57 @@
     empty.style.display = stamps.length ? 'none' : '';
     empty.setAttribute('aria-hidden', stamps.length ? 'true' : 'false');
   }
+
   function rebuildList(){
     stamps = stamps.map(function(x){ return (typeof x==='number')? {time:x,label:''}:x; });
     stamps.sort(function(a,b){ return a.time-b.time; });
+
     var ul=$('#list'); if(!ul) return; ul.innerHTML='';
+    var modeNum = numberingMode();
+
     for(var i=0;i<stamps.length;i++){
-      (function(item){
+      (function(item, idx){
         var li=document.createElement('li'); li.className='stamp';
-        var time=document.createElement('code'); time.className='time editable'; time.textContent=fmt(item.time);
+
+        var time=document.createElement('code'); time.className='time editable';
+        // 「先頭につける」→ 連番(数字のみ) + 半角スペース + mm:ss
+        time.textContent=(modeNum==='head'? (String(idx+1)+' ') : '') + fmt(item.time);
         time.title=HINT_EDIT; time.setAttribute('role','button'); time.setAttribute('tabindex','0');
         time.addEventListener('dblclick', function(){ openEditModal(item); });
         time.addEventListener('keydown', function(e){ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); e.stopPropagation(); openEditModal(item); } });
+
+        // 「見出しの前につける」→ number列に数字のみを表示
+        var num=document.createElement('span'); num.className='num';
+        num.textContent = String(idx+1);
+        num.style.display = (modeNum==='beforeTitle')? '' : 'none';
+
         var title=document.createElement('input'); title.className='title'; title.value=item.label||''; title.placeholder=PH_HINT;
         title.addEventListener('input', function(){ item.label=title.value; buildPreview(); });
+
         var del=document.createElement('button'); del.textContent=BTN_DELETE;
         del.addEventListener('click', function(){ stamps=stamps.filter(function(x){ return x!==item; }); rebuildList(); buildPreview(); });
-        li.appendChild(time); li.appendChild(title); li.appendChild(del);
+
+        li.appendChild(time); li.appendChild(num); li.appendChild(title); li.appendChild(del);
         ul.appendChild(li);
-      })(stamps[i]);
+      })(stamps[i], i);
     }
+
     toggleEmptyTip();
     setControlsEnabled(mode==='youtube' ? isYTVideoReady : isFileReady);
     buildPreview();
   }
+
   function buildPreview(){
+    var modeNum = numberingMode();
     var lines = stamps.slice().sort(function(a,b){ return a.time-b.time; })
-      .map(function(x){ return fmt(x.time) + (x.label? ' '+x.label : ''); });
+      .map(function(x, idx){
+        var n = String(idx+1); // 数字のみ
+        var t = fmt(x.time);
+        var lbl = x.label? ' '+x.label : '';
+        if(modeNum==='head')        return n+' '+t+lbl;       // 1 00:00 タイトル
+        if(modeNum==='beforeTitle') return t+' '+n+lbl;       // 00:00 1 タイトル
+        return t+lbl;                                         // 00:00 タイトル
+      });
     var ta=$('#preview'); if(ta) ta.value = lines.join('\n');
   }
 
@@ -508,7 +557,7 @@
   var copyBtn=$('#copyBtn'); if(copyBtn){ copyBtn.addEventListener('click', function(){ var txt=$('#preview').value; navigator.clipboard.writeText(txt).then(function(){ statusMsg(MSG_COPIED); }).catch(function(){ try{ var ta=$('#preview'); ta.focus(); ta.select(); document.getSelection().removeAllRanges(); }catch(_){ } statusMsg(MSG_COPY_FAILED); }); }); }
   var clrBtn=$('#clearBtn'); if(clrBtn){ clrBtn.addEventListener('click', function(){ if(!stamps.length) return; if(!confirm(CONFIRM_CLEAR)) return; stamps=[]; rebuildList(); }); }
 
-  // ==== 編集モーダルのイベント（保存/キャンセル/キー操作/背景クリック）====
+  // 編集モーダル
   var iEdit   = document.querySelector('#editInput');
   var bSave   = document.querySelector('#editSave');
   var bCancel = document.querySelector('#editCancel');
@@ -526,6 +575,15 @@
       if (e.target === eModal) closeEditModal();
     });
   }
+
+  // 連番ラジオ i18n 適用 & 変更時再描画
+  var numberingLabelEl=$('#numberingLabel'); if(numberingLabelEl) numberingLabelEl.textContent = LBL_NUM || '連番';
+  var numLblNone=$('#numLblNone'); if(numLblNone) numLblNone.textContent = LBL_NUM_NONE || '無し';
+  var numLblHead=$('#numLblHead'); if(numLblHead) numLblHead.textContent = LBL_NUM_HEAD || '先頭につける';
+  var numLblBefore=$('#numLblBefore'); if(numLblBefore) numLblBefore.textContent = LBL_NUM_BTITLE || '見出しの前につける';
+
+  var radios=document.querySelectorAll('input[name="numbering"]');
+  radios.forEach(function(r){ r.addEventListener('change', function(){ rebuildList(); buildPreview(); }); });
 
   // Import modal events
   var openImportBtn=$('#openImportBtn');
@@ -563,7 +621,7 @@
 
   // Start
   requestAnimationFrame(loopUpdateCurrentTime);
-  toggleEmptyTip(); // 初期表示：空状態カードを見せる
+  toggleEmptyTip();
   setMode('youtube');
 })();
   </script>
