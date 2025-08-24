@@ -67,9 +67,9 @@
     <span id="alert_file_types">mp4/mp3/wav のみ対応しています。</span>
     <span id="import_open">テキストをインポート</span>
     <span id="import_title">テキストをインポート</span>
-    <span id="import_hint">各行を上から順にタイムスタンプへ割り当て（空行は無視）</span>
+    <span id="import_hint">各行を上から順にタイムスタンプへ割り当て（空行も割り当て）</span>
     <span id="import_apply">割り当て</span>
-    <span id="import_placeholder">ここに1行ずつテキストを入力／貼り付け</span>
+    <span id="import_placeholder">ここに1行ずつテキストを入力／貼り付け（空行も可）</span>
     <span id="msg_import_done">インポートを反映しました</span>
   </div>
 
@@ -107,7 +107,7 @@
     <div class="stack">
       <div class="tsgrid">
         <div class="listArea">
-          <!-- ★ ヒントと「テキストをインポート」ボタンを同じ行に配置 -->
+          <!-- ボタンをタイムスタンプ周りへ配置 -->
           <div class="row" style="justify-content:space-between; width:100%;">
             <div class="hint" style="font-size:12px;color:#64748b;">時間部分（✎付き）をダブルクリックで編集できます</div>
             <button id="openImportBtn" type="button" disabled>テキストをインポート</button>
@@ -144,8 +144,8 @@
   <div id="importModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="importDlgTitle">
     <div class="modalContent">
       <h3 id="importDlgTitle">テキストをインポート</h3>
-      <div id="importDlgHint" style="font-size:12px;color:#64748b;">各行を上から順にタイムスタンプへ割り当て（空行は無視）</div>
-      <textarea id="importTextarea" placeholder="ここに1行ずつテキストを入力／貼り付け" style="height:160px"></textarea>
+      <div id="importDlgHint" style="font-size:12px;color:#64748b;">各行を上から順にタイムスタンプへ割り当て（空行も割り当て）</div>
+      <textarea id="importTextarea" placeholder="ここに1行ずつテキストを入力／貼り付け（空行も可）" style="height:160px"></textarea>
       <div style="font-size:12px;color:#94a3b8">ショートカット: Ctrl/⌘+Enter で割り当て</div>
       <div class="modalActions">
         <button id="importCancel" type="button">キャンセル</button>
@@ -194,10 +194,10 @@
   // ===== State =====
   var mode='youtube';
   var player=null, isYTReady=false, pendingVideoId='';
-  var isYTVideoReady=false; // 動画が読み込まれたか
+  var isYTVideoReady=false;
   var fileEl=null, fileURL=null, isFileReady=false, fileLabel='';
   var stamps=[]; // { time:number, label:string }
-  var useHMS=false; // >=3600s -> hh:mm:ss
+  var useHMS=false;
 
   // ===== Time helpers =====
   function fmt(sec){
@@ -235,7 +235,7 @@
     var a=$('#addBtn'); if(a) a.disabled=!ready;
     var c=$('#copyBtn'); if(c) c.disabled=(stamps.length===0);
     var d=$('#clearBtn'); if(d) d.disabled=(stamps.length===0);
-    var oi=$('#openImportBtn'); if(oi) oi.disabled=(stamps.length===0); // スタンプが無いときはインポート不可
+    var oi=$('#openImportBtn'); if(oi) oi.disabled=(stamps.length===0);
   }
 
   // ===== Edit Time Modal =====
@@ -297,9 +297,9 @@
   function openImportModal(){
     var m=$('#importModal'); if(!m) return;
     var t=$('#importDlgTitle'); if(t) t.textContent=IMPORT_TITLE||'テキストをインポート';
-    var h=$('#importDlgHint');  if(h) h.textContent=IMPORT_HINT||'各行を上から順にタイムスタンプへ割り当て（空行は無視）';
+    var h=$('#importDlgHint');  if(h) h.textContent=IMPORT_HINT||'各行を上から順にタイムスタンプへ割り当て（空行も割り当て）';
     var a=$('#importApply');    if(a) a.textContent=IMPORT_APPLY||'割り当て';
-    var z=$('#importTextarea'); if(z) z.placeholder=IMPORT_PLACE||'ここに1行ずつテキストを入力／貼り付け';
+    var z=$('#importTextarea'); if(z) z.placeholder=IMPORT_PLACE||'ここに1行ずつテキストを入力／貼り付け（空行も可）';
     m.classList.add('show');
     if(z){ try{ z.focus(); }catch(_){ } }
   }
@@ -307,11 +307,12 @@
   function applyImportFromModal(){
     if(!stamps.length){ closeImportModal(); return; }
     var z=$('#importTextarea'); var raw = z ? z.value : '';
-    var lines = String(raw).split(/\r?\n/).map(function(s){return s.trim();}).filter(function(s){return s.length>0;});
-    if(!lines.length){ statusMsg(MSG_IMPORT_DONE + ' (0件)'); closeImportModal(); return; }
+    // ★ 変更点：空行も保持。未入力（完全空）のときだけ 0 件扱い。
+    if(raw === ''){ statusMsg(MSG_IMPORT_DONE + ' (0件)'); closeImportModal(); return; }
+    var lines = raw.split(/\r?\n/); // trimもfilterもしない
     stamps.sort(function(a,b){ return a.time-b.time; });
     var n = Math.min(lines.length, stamps.length);
-    for(var i=0;i<n;i++){ stamps[i].label = lines[i]; }
+    for(var i=0;i<n;i++){ stamps[i].label = lines[i]; } // 空文字もそのままセット
     rebuildList();
     statusMsg(MSG_IMPORT_DONE + ' ('+ n +'件)');
     closeImportModal();
