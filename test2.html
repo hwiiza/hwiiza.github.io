@@ -29,12 +29,12 @@
     .tsgrid .previewArea { display: grid; gap: 8px; }
     #list { display: flex; flex-direction: column; gap: 8px; margin: 0; max-height: 60vh; overflow-y: auto; overflow-x: hidden; align-items: stretch; justify-content: flex-start; }
     textarea { width: 100%; height: 140px; }
+    .importCard{border:1px solid #eee;border-radius:10px;padding:10px;display:grid;gap:8px;background:#fafafa}
     .modal{position:fixed; inset:0; display:none; place-items:center; background:rgba(0,0,0,.4); z-index:1000;}
     .modal.show{display:grid;}
     .modalContent{background:#fff; width:320px; max-width:90vw; padding:16px; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,.2); display:grid; gap:12px;}
     .modalActions{display:flex; gap:8px; justify-content:flex-end;}
     .time.editable{cursor:pointer;background:#f8fafc;border:1px dashed #cbd5e1;padding:2px 8px;border-radius:8px;display:inline-flex;align-items:center;gap:6px;}
-    /* ✎ の文字化け修正 */
     .time.editable::after{content:"✎";font-size:.9em;opacity:.6}
     .time.editable:hover{background:#eef2ff;border-color:#94a3b8}
     .time.editable:focus-visible{outline:2px solid #60a5fa;outline-offset:2px}
@@ -60,12 +60,17 @@
     <span id="invalid_time">無効な時間形式です。mm:ss または hh:mm:ss で入力してください。</span>
     <span id="msg_copied">コピーしました</span>
     <span id="msg_copy_failed">コピーに失敗</span>
-    <!-- 追加 -->
+    <!-- 追加 i18n -->
     <span id="edit_hint">ダブルクリックして編集</span>
     <span id="btn_delete">削除</span>
     <span id="confirm_clear">すべて削除します。よろしいですか？</span>
     <span id="alert_need_id">URL または動画IDを入力してください。</span>
     <span id="alert_file_types">mp4/mp3/wav のみ対応しています。</span>
+    <span id="import_title">テキストをインポート</span>
+    <span id="import_hint">各行を上から順にタイムスタンプへ割り当て（空行は無視）</span>
+    <span id="import_apply">割り当て</span>
+    <span id="import_placeholder">ここに1行ずつテキストを入力／貼り付け</span>
+    <span id="msg_import_done">インポートを反映しました</span>
   </div>
 
   <div class="stack" style="margin-bottom:16px">
@@ -104,7 +109,19 @@
         <div class="listArea">
           <div class="hint" style="font-size:12px;color:#64748b;">時間部分（✎付き）をダブルクリックで編集できます</div>
           <ul id="list"></ul>
+
+          <!-- テキストインポート UI -->
+          <div class="importCard">
+            <div class="row" style="justify-content:space-between;gap:8px">
+              <strong id="importTitleLabel">テキストをインポート</strong>
+              <button id="importApplyBtn" type="button" disabled>割り当て</button>
+            </div>
+            <div style="font-size:12px;color:#64748b" id="importHintLabel">各行を上から順にタイムスタンプへ割り当て（空行は無視）</div>
+            <textarea id="importText" placeholder="ここに1行ずつテキストを入力／貼り付け" style="height:120px"></textarea>
+            <div style="font-size:12px;color:#94a3b8">ショートカット: Ctrl/⌘+Enter で割り当て</div>
+          </div>
         </div>
+
         <div class="previewArea">
           <div class="row">
             <button id="copyBtn" type="button" disabled>一覧をコピー</button>
@@ -160,11 +177,16 @@
   var CONFIRM_CLEAR    = T('confirm_clear');
   var ALERT_NEED_ID    = T('alert_need_id');
   var ALERT_FILE_TYPES = T('alert_file_types');
+  var IMPORT_TITLE     = T('import_title');
+  var IMPORT_HINT      = T('import_hint');
+  var IMPORT_APPLY     = T('import_apply');
+  var IMPORT_PLACE     = T('import_placeholder');
+  var MSG_IMPORT_DONE  = T('msg_import_done');
 
   // ===== State =====
   var mode='youtube';
   var player=null, isYTReady=false, pendingVideoId='';
-  var isYTVideoReady=false; // ← 追加: 動画が読み込まれたか（API準備完了とは別）
+  var isYTVideoReady=false; // 読み込み済みか
   var fileEl=null, fileURL=null, isFileReady=false, fileLabel='';
   var stamps=[]; // { time:number, label:string }
   var useHMS=false; // >=3600s -> hh:mm:ss
@@ -205,6 +227,7 @@
     var a=$('#addBtn'); if(a) a.disabled=!ready;
     var c=$('#copyBtn'); if(c) c.disabled=(stamps.length===0);
     var d=$('#clearBtn'); if(d) d.disabled=(stamps.length===0);
+    var iA=$('#importApplyBtn'); if(iA) iA.disabled=(stamps.length===0); // インポートはスタンプがある時のみ
   }
 
   // ===== Edit Time Modal =====
@@ -252,7 +275,6 @@
         ul.appendChild(li);
       })(stamps[i]);
     }
-    // ★ YouTube の「動画未読込時」は非活性
     setControlsEnabled(mode==='youtube' ? isYTVideoReady : isFileReady);
     buildPreview();
   }
@@ -261,6 +283,20 @@
     var lines = stamps.slice().sort(function(a,b){ return a.time-b.time; })
       .map(function(x){ return fmt(x.time) + (x.label? ' '+x.label : ''); });
     var ta=$('#preview'); if(ta) ta.value = lines.join('\n');
+  }
+
+  // ===== Import text -> assign to stamps =====
+  function importAssign(){
+    if(!stamps.length) return;
+    var ta=$('#importText'); var raw = ta ? ta.value : '';
+    var lines = String(raw).split(/\r?\n/).map(function(s){return s.trim();}).filter(function(s){return s.length>0;});
+    if(!lines.length){ statusMsg(MSG_IMPORT_DONE + ' (0件)'); return; }
+    // stamps は時間順にしてから適用
+    stamps.sort(function(a,b){ return a.time-b.time; });
+    var n = Math.min(lines.length, stamps.length);
+    for(var i=0;i<n;i++){ stamps[i].label = lines[i]; }
+    rebuildList();
+    statusMsg(MSG_IMPORT_DONE + ' ('+ n +'件)');
   }
 
   function loopUpdateCurrentTime(){
@@ -286,16 +322,16 @@
 
   function onReady(){
     isYTReady=true;
-    isYTVideoReady=false;                 // API 準備完了時点では未読込
+    isYTVideoReady=false;
     statusMsg(MSG_UNLOADED);
     updateFormatMode();
-    setControlsEnabled(false);            // ★ 非活性
+    setControlsEnabled(false);
     if(pendingVideoId){ try{ player.cueVideoById(pendingVideoId); }catch(e){} pendingVideoId=''; }
   }
   function onStateChange(e){
     if(!e) return;
     if(e.data===YT.PlayerState.CUED){
-      isYTVideoReady=true;                // ★ 動画が読み込まれた
+      isYTVideoReady=true;
       updateFormatMode();
       if(mode==='youtube') setControlsEnabled(true);
       try{
@@ -310,7 +346,7 @@
     }
   }
   function onError(e){
-    isYTVideoReady=false;                 // エラー時は非活性に戻す
+    isYTVideoReady=false;
     if(mode==='youtube') setControlsEnabled(false);
     statusMsg(MSG_ERROR + (e&&e.data));
   }
@@ -359,12 +395,12 @@
   // ===== Actions =====
   function loadYouTube(){
     mode='youtube';
-    isYTVideoReady=false;                 // ★ 読み込み開始前に無効化
+    isYTVideoReady=false;
     destroyFileVideo();
     var p=$('#player'); if(p) p.style.display='';
     var vi=$('#videoInput'); var raw=vi? (vi.value||'').trim() : ''; var id=parseVideoId(raw);
     if(!id){ alert(ALERT_NEED_ID); return; }
-    setControlsEnabled(false);            // ★ 非活性
+    setControlsEnabled(false);
     statusMsg(MSG_LOADING);
     if(isYTReady){ try{ player.cueVideoById(id); }catch(_){ } } else { pendingVideoId=id; }
     setTimeout(function(){ try{ ensureCueOrLoad(id,0); }catch(_){ } },1200);
@@ -375,7 +411,7 @@
     var ok=/\.(mp4|mp3|wav)$/i.test(f.name); if(!ok){ alert(ALERT_FILE_TYPES); return; }
     mode='file'; fileLabel=f.name||''; var p=$('#player'); if(p) p.style.display='none';
     var v=createFileVideo(); if(fileURL){ try{ URL.revokeObjectURL(fileURL); }catch(_){ } fileURL=null; }
-    isYTVideoReady=false;                 // YouTube 側は未読込扱いに
+    isYTVideoReady=false;
     v.src = (fileURL=URL.createObjectURL(f)); v.load(); statusMsg(MSG_LOADING);
   }
 
@@ -388,7 +424,7 @@
     if(mode==='youtube'){
       destroyFileVideo();
       var p1=$('#player'); if(p1) p1.style.display='';
-      setControlsEnabled(isYTVideoReady); // ★ 動画読み込み済みかどうかで制御
+      setControlsEnabled(isYTVideoReady);
       statusMsg(isYTVideoReady ? MSG_LOADED : MSG_UNLOADED);
       var t1=$('#toggleBtn'); if(t1) t1.textContent=BTN_PLAY;
     } else {
@@ -434,12 +470,17 @@
   var copyBtn=$('#copyBtn'); if(copyBtn){ copyBtn.addEventListener('click', function(){ var txt=$('#preview').value; navigator.clipboard.writeText(txt).then(function(){ statusMsg(MSG_COPIED); }).catch(function(){ try{ var ta=$('#preview'); ta.focus(); ta.select(); document.getSelection().removeAllRanges(); }catch(_){ } statusMsg(MSG_COPY_FAILED); }); }); }
   var clrBtn=$('#clearBtn'); if(clrBtn){ clrBtn.addEventListener('click', function(){ if(!stamps.length) return; if(!confirm(CONFIRM_CLEAR)) return; stamps=[]; rebuildList(); }); }
 
-  // Modal events
-  var iEdit=$('#editInput'); var bSave=$('#editSave'); var bCancel=$('#editCancel'); var modal=$('#editModal');
-  if(bSave) bSave.addEventListener('click', saveEditModal);
-  if(bCancel) bCancel.addEventListener('click', closeEditModal);
-  if(iEdit){ iEdit.addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); saveEditModal(); } else if(e.key==='Escape'){ e.preventDefault(); closeEditModal(); } }); }
-  if(modal){ modal.addEventListener('click', function(e){ if(e.target===modal) closeEditModal(); }); }
+  // Import UI i18n とイベント
+  var importTitleLabel=$('#importTitleLabel'); if(importTitleLabel) importTitleLabel.textContent=IMPORT_TITLE||'テキストをインポート';
+  var importHintLabel=$('#importHintLabel'); if(importHintLabel) importHintLabel.textContent=IMPORT_HINT||'各行を上から順にタイムスタンプへ割り当て';
+  var importApplyBtn=$('#importApplyBtn'); if(importApplyBtn) importApplyBtn.textContent=IMPORT_APPLY||'割り当て';
+  var importText=$('#importText'); if(importText) importText.placeholder=IMPORT_PLACE||'ここに1行ずつテキストを入力／貼り付け';
+  if(importApplyBtn){ importApplyBtn.addEventListener('click', importAssign); }
+  if(importText){
+    importText.addEventListener('keydown', function(e){
+      if((e.metaKey||e.ctrlKey) && e.key==='Enter'){ e.preventDefault(); importAssign(); }
+    });
+  }
 
   function parseVideoId(input){
     if(!input) return '';
@@ -460,7 +501,7 @@
 
   // Start
   requestAnimationFrame(loopUpdateCurrentTime);
-  setMode('youtube');                    // 初期は未読込 → 非活性
+  setMode('youtube');
 })();
 </script>
 </body>
