@@ -89,7 +89,6 @@
     <div class="row">
       <button id="toggleBtn" type="button" disabled>再生</button>
       <button id="addBtn" type="button" disabled>現在位置でタイムスタンプ追加</button>
-      <button id="openImportBtn" type="button" disabled>テキストをインポート</button>
       <span id="status" class="pill">未読み込み</span>
     </div>
     <div class="row">
@@ -108,7 +107,11 @@
     <div class="stack">
       <div class="tsgrid">
         <div class="listArea">
-          <div class="hint" style="font-size:12px;color:#64748b;">時間部分（✎付き）をダブルクリックで編集できます</div>
+          <!-- ★ ヒントと「テキストをインポート」ボタンを同じ行に配置 -->
+          <div class="row" style="justify-content:space-between; width:100%;">
+            <div class="hint" style="font-size:12px;color:#64748b;">時間部分（✎付き）をダブルクリックで編集できます</div>
+            <button id="openImportBtn" type="button" disabled>テキストをインポート</button>
+          </div>
           <ul id="list"></ul>
         </div>
         <div class="previewArea">
@@ -122,7 +125,7 @@
     </div>
   </div>
 
-  <!-- 既存: 時刻編集モーダル -->
+  <!-- 時刻編集モーダル -->
   <div id="editModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="dlgTitle">
     <div class="modalContent">
       <h3 id="dlgTitle">タイムスタンプを編集</h3>
@@ -137,7 +140,7 @@
     </div>
   </div>
 
-  <!-- 追加: テキストインポート用モーダル -->
+  <!-- テキストインポート用モーダル -->
   <div id="importModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="importDlgTitle">
     <div class="modalContent">
       <h3 id="importDlgTitle">テキストをインポート</h3>
