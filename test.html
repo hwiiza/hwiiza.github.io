@@ -615,7 +615,15 @@
 
   var addBtn=$('#addBtn'); if(addBtn){ addBtn.addEventListener('click', function(){ var t=current.getTime(); if(!isFinite(t)) return; stamps.push({time:Math.floor(t),label:''}); rebuildList(); }); }
   var copyBtn=$('#copyBtn'); if(copyBtn){ copyBtn.addEventListener('click', function(){ var txt=$('#preview').value; navigator.clipboard.writeText(txt).then(function(){ statusMsg(MSG_COPIED); }).catch(function(){ try{ var ta=$('#preview'); ta.focus(); ta.select(); document.getSelection().removeAllRanges(); }catch(_){ } statusMsg(MSG_COPY_FAILED); }); }); }
-  var clrBtn=$('#clearBtn'); if(clrBtn){ clrBtn.addEventListener('click', function(){ if(!stamps.length) return; if(!confirm(CONFIRM_CLEAR)) return; stamps=[]; rebuildList(); }); });
+  var clrBtn=$('#clearBtn'); 
+if(clrBtn){
+  clrBtn.addEventListener('click', function(){
+    if(!stamps.length) return;
+    if(!confirm(CONFIRM_CLEAR)) return;
+    stamps=[]; 
+    rebuildList();
+  });
+}
 
   // 編集モーダル
   var iEdit   = document.querySelector('#editInput');
@@ -687,3 +695,4 @@
   </script>
 </body>
 </html>
+
