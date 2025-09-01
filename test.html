@@ -19,26 +19,31 @@
     .time { font-variant-numeric: tabular-nums; font-weight: 700; }
     .pill { background:#f5f5f5; border-radius:999px; padding:4px 8px; }
     ul { list-style: none; padding: 0; margin: 0; }
+    /* time | number | title | delete */
     li.stamp { display: grid; grid-template-columns: auto auto 1fr auto; gap: 8px; align-items: center; padding: 8px; border: 1px solid #eee; border-radius: 10px; margin: 0; }
     .num { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; min-width: 2.2ch; text-align: right; opacity:.7; }
     .title { width: 100%; padding: 6px 8px; border: 1px solid #ddd; border-radius: 8px; min-width: 0; }
     .stack { display: grid; gap: 8px; }
 
+    /* 大画面で左詰め */
     .grid { display: grid; gap: 20px; grid-template-columns: 1fr; }
     @media (min-width: 900px) {
       .grid { grid-template-columns: max-content 1fr; align-items: start; justify-items: start; }
     }
 
     .hidden { display: none !important; }
-
-    /* 一覧を無くしたので常に1カラム */
     .tsgrid { display: grid; gap: 12px; grid-template-columns: 1fr; align-items: start; }
-    @media (min-width: 700px) { .tsgrid { grid-template-columns: 1fr; } }
-
+    @media (min-width: 700px) { .tsgrid { grid-template-columns: 1fr 1fr; } }
     .tsgrid > * { align-self: start; min-width: 0; }
     .tsgrid .previewArea { display: grid; gap: 8px; }
-    #list { display: none; } /* 念のため */
+    #list { display: flex; flex-direction: column; gap: 8px; margin: 0; max-height: 60vh; overflow-y: auto; overflow-x: hidden; align-items: stretch; justify-content: flex-start; }
     textarea { width: 100%; height: 140px; }
+
+    /* 空状態カード */
+    .emptyTip { border:1px dashed #cbd5e1; background:#f8fafc; color:#475569; padding:16px; border-radius:12px; }
+    .emptyTip .title { font-weight:700; color:#0f172a; border:none; padding:0; }
+    .emptyTip ul { margin:8px 0 0 1em; }
+    .emptyTip ul li { list-style: disc; margin-left: 1em; }
 
     .modal{position:fixed; inset:0; display:none; place-items:center; background:rgba(0,0,0,.4); z-index:1000;}
     .modal.show{display:grid;}
@@ -50,8 +55,21 @@
     .time.editable:hover{background:#eef2ff;border-color:#94a3b8}
     .time.editable:focus-visible{outline:2px solid #60a5fa;outline-offset:2px}
 
+    /* 連番ラジオ */
     .numRadios { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
     .numRadios label { display:inline-flex; align-items:center; gap:6px; }
+
+    /* タブ */
+    .tabs { display: flex; gap: 8px; border-bottom: 1px solid #e5e7eb; }
+    .tab {
+      appearance: none; background: transparent; border: none; padding: 10px 14px; border-radius: 10px 10px 0 0;
+      cursor: pointer; font-weight: 600; color:#475569;
+    }
+    .tab:is(:hover,:focus-visible){ background:#f1f5f9; outline: none; }
+    .tab.is-active{
+      color:#0f172a; background:#fff; border:1px solid #e5e7eb; border-bottom-color: transparent; position: relative; top:1px;
+    }
+    .tabpanel { padding-top: 8px; }
   </style>
 </head>
 <body>
@@ -83,34 +101,43 @@
     <span id="import_apply">割り当て</span>
     <span id="import_placeholder">ここに1行ずつテキストを入力／貼り付け（空行も可）</span>
     <span id="msg_import_done">インポートを反映しました</span>
+    <!-- 連番 i18n -->
     <span id="opt_numbering_label">連番</span>
     <span id="opt_numbering_none">無し</span>
     <span id="opt_numbering_head">先頭につける</span>
     <span id="opt_numbering_before_title">見出しの前につける</span>
   </div>
 
-  <div class="stack" style="margin-bottom:16px">
-    <div class="row" id="modeRow">
-      <label><input type="radio" name="mode" value="youtube" checked> YouTube</label>
-      <label><input type="radio" name="mode" value="file"> ファイル</label>
-    </div>
+  <!-- ▶ タブ見出し（ラジオ→タブへ変更） -->
+  <div class="tabs" role="tablist" aria-label="モード選択">
+    <button id="tab-youtube" class="tab is-active" role="tab" aria-selected="true" aria-controls="panel-youtube">YouTubeモード</button>
+    <button id="tab-file" class="tab" role="tab" aria-selected="false" aria-controls="panel-file">ファイルモード</button>
+  </div>
+
+  <!-- ▶ タブパネル -->
+  <div id="panel-youtube" class="tabpanel" role="tabpanel" aria-labelledby="tab-youtube">
     <div class="row" id="ytControls">
       <button id="ytLoadBtn" type="button">読み込み</button>
       <input id="videoInput" type="text" placeholder="YouTubeのURL または 動画ID" />
     </div>
-    <div class="row hidden" id="fileControls">
+  </div>
+
+  <div id="panel-file" class="tabpanel hidden" role="tabpanel" aria-labelledby="tab-file">
+    <div class="row" id="fileControls">
       <button id="fileSelectBtn" type="button">ファイルを選択（mp4/mp3/wav）</button>
       <input id="fileInput" type="file" accept="video/mp4,audio/mpeg,audio/wav" class="hidden" />
     </div>
-    <div class="row">
-      <span id="status" class="pill">未読み込み</span>
-    </div>
-    <div class="row">
-      <span>現在位置: <strong id="currentTime" class="time">00:00</strong></span>
-    </div>
   </div>
 
-  <div class="grid">
+  <!-- ステータス行 -->
+  <div class="row">
+    <span id="status" class="pill">未読み込み</span>
+  </div>
+  <div class="row">
+    <span>現在位置: <strong id="currentTime" class="time">00:00</strong></span>
+  </div>
+
+  <div class="grid" style="margin-top:12px">
     <div class="stack">
       <div id="playerWrap"><div id="player"></div></div>
       <div class="row" id="playerActions">
@@ -121,7 +148,24 @@
 
     <div class="stack">
       <div class="tsgrid">
-        <!-- listArea は完全削除 -->
+        <div class="listArea">
+          <div class="row" style="justify-content:space-between; width:100%;">
+            <div class="hint" style="font-size:12px;color:#64748b;">時間部分（✎付き）をダブルクリックで編集できます</div>
+            <button id="openImportBtn" type="button" disabled>テキストをインポート</button>
+          </div>
+
+          <!-- 空状態ガイド -->
+          <div id="listEmpty" class="emptyTip">
+            <div class="title">ここにタイムスタンプが表示されます</div>
+            <div>プレイヤーで位置を決めて<strong>「現在位置でタイムスタンプ追加」</strong>を押してください。</div>
+            <ul>
+              <li>時間（<span style="font-family:monospace">✎</span>）をダブルクリックで編集</li>
+              <li>「テキストをインポート」で各行を上から順に割り当て</li>
+            </ul>
+          </div>
+
+          <ul id="list"></ul>
+        </div>
 
         <div class="previewArea">
           <div class="row" style="justify-content:space-between; width:100%;">
@@ -132,24 +176,17 @@
               <label><input type="radio" name="numbering" value="beforeTitle"> <span id="numLblBefore">見出しの前につける</span></label>
             </div>
             <div class="row" style="gap:8px;">
-              <label class="row" style="gap:6px; align-items:center;">
-                <input id="autoSync" type="checkbox" checked>
-                <span>プレビュー自動更新</span>
-              </label>
-              <span id="previewModePill" class="pill" aria-live="polite" title="プレビューの更新モード">自動</span>
-              <button id="openImportBtn" type="button" disabled>テキストをインポート</button>
               <button id="copyBtn" type="button" disabled>一覧をコピー</button>
               <button id="clearBtn" type="button" disabled>すべて削除</button>
             </div>
           </div>
-          <!-- 直接編集できるテキストボックス -->
-          <textarea id="preview" placeholder="ここにコピー内容が表示されます"></textarea>
+          <textarea id="preview" readonly placeholder="ここにコピー内容が表示されます"></textarea>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- 時刻編集モーダル（一覧を削ったため通常未使用だが残置） -->
+  <!-- 時刻編集モーダル -->
   <div id="editModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="dlgTitle">
     <div class="modalContent">
       <h3 id="dlgTitle">タイムスタンプを編集</h3>
@@ -277,7 +314,7 @@
     var oi=$('#openImportBtn'); if(oi) oi.disabled=(stamps.length===0);
   }
 
-  // ===== Edit Time Modal (残置) =====
+  // ===== Edit Time Modal =====
   var editTarget=null;
   function openEditModal(item){
     editTarget=item;
@@ -298,32 +335,53 @@
     closeEditModal();
   }
 
-  // ===== Preview build =====
-  function shouldAutoSync(){
-    var ck=$('#autoSync');
-    return ck ? ck.checked : true;
-  }
-  function setPreviewModePill(){
-    var pill=$('#previewModePill');
-    if(!pill) return;
-    pill.textContent = shouldAutoSync() ? '自動' : '手動編集中';
+  // ===== List & Preview =====
+  function toggleEmptyTip(){
+    var empty=$('#listEmpty'); if(!empty) return;
+    empty.style.display = stamps.length ? 'none' : '';
+    empty.setAttribute('aria-hidden', stamps.length ? 'true' : 'false');
   }
 
   function rebuildList(){
-    // 正規化＆ソート
     stamps = stamps.map(function(x){ return (typeof x==='number')? {time:x,label:''}:x; });
     stamps.sort(function(a,b){ return a.time-b.time; });
 
-    // 一覧DOMは削除済みのため描画はスキップ（存在する場合のみ安全に実行）
-    var ul=$('#list');
-    if (ul) { ul.innerHTML=''; /*（省略：旧UIの構築）*/ }
+    var ul=$('#list'); if(!ul) return; ul.innerHTML='';
+    var modeNum = numberingMode();
 
+    for(var i=0;i<stamps.length;i++){
+      (function(item, idx){
+        var li=document.createElement('li'); li.className='stamp';
+
+        var time=document.createElement('code'); time.className='time editable';
+        // 「先頭につける」→ 連番(数字のみ) + 半角スペース + mm:ss
+        time.textContent=(modeNum==='head'? (String(idx+1)+' ') : '') + fmt(item.time);
+        time.title=HINT_EDIT; time.setAttribute('role','button'); time.setAttribute('tabindex','0');
+        time.addEventListener('dblclick', function(){ openEditModal(item); });
+        time.addEventListener('keydown', function(e){ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); e.stopPropagation(); openEditModal(item); } });
+
+        // 「見出しの前につける」→ number列に数字のみを表示
+        var num=document.createElement('span'); num.className='num';
+        num.textContent = String(idx+1);
+        num.style.display = (modeNum==='beforeTitle')? '' : 'none';
+
+        var title=document.createElement('input'); title.className='title'; title.value=item.label||''; title.placeholder=PH_HINT;
+        title.addEventListener('input', function(){ item.label=title.value; buildPreview(); });
+
+        var del=document.createElement('button'); del.textContent=BTN_DELETE;
+        del.addEventListener('click', function(){ stamps=stamps.filter(function(x){ return x!==item; }); rebuildList(); buildPreview(); });
+
+        li.appendChild(time); li.appendChild(num); li.appendChild(title); li.appendChild(del);
+        ul.appendChild(li);
+      })(stamps[i], i);
+    }
+
+    toggleEmptyTip();
     setControlsEnabled(mode==='youtube' ? isYTVideoReady : isFileReady);
     buildPreview();
   }
 
-  function buildPreview(force){
-    if(!force && !shouldAutoSync()) { setPreviewModePill(); return; }
+  function buildPreview(){
     var modeNum = numberingMode();
     var lines = stamps.slice().sort(function(a,b){ return a.time-b.time; })
       .map(function(x, idx){
@@ -335,7 +393,6 @@
         return t+lbl;                                         // 00:00 タイトル
       });
     var ta=$('#preview'); if(ta) ta.value = lines.join('\n');
-    setPreviewModePill();
   }
 
   // ===== Import (Modal) =====
@@ -452,9 +509,83 @@
     isFileReady=false; fileLabel='';
   }
 
+  // ===== Mode switch (Tabs) =====
+  var tabYouTube = $('#tab-youtube');
+  var tabFile    = $('#tab-file');
+  var panelYouTube = $('#panel-youtube');
+  var panelFile    = $('#panel-file');
+
+  function reflectTabUI(){
+    // active style & aria
+    var isYT = (mode==='youtube');
+    tabYouTube.classList.toggle('is-active', isYT);
+    tabFile.classList.toggle('is-active', !isYT);
+    tabYouTube.setAttribute('aria-selected', isYT ? 'true' : 'false');
+    tabFile.setAttribute('aria-selected', !isYT ? 'true' : 'false');
+    // panels
+    panelYouTube.classList.toggle('hidden', !isYT);
+    panelFile.classList.toggle('hidden', isYT);
+  }
+
+  function setMode(newMode){
+    mode=newMode;
+    reflectTabUI();
+
+    var ytC=$('#ytControls'); var fC=$('#fileControls');
+    if(ytC){ ytC.classList.toggle('hidden', mode!=='youtube'); ytC.style.display=(mode==='youtube')? '' : 'none'; }
+    if(fC){  fC.classList.toggle('hidden',  mode!=='file');    fC.style.display=(mode==='file')? '' : 'none'; }
+
+    if(mode==='youtube'){
+      destroyFileVideo();
+      var p1=$('#player'); if(p1) p1.style.display='';
+      setControlsEnabled(isYTVideoReady);
+      statusMsg(isYTVideoReady ? MSG_LOADED : MSG_UNLOADED);
+    } else {
+      var p2=$('#player'); if(p2) p2.style.display='none';
+      setControlsEnabled(isFileReady);
+      if(!isFileReady) statusMsg(MSG_UNLOADED);
+    }
+  }
+
+  function requestModeChange(nextMode){
+    if(nextMode===mode) return;
+    if(stamps && stamps.length>0){
+      var ok=confirm(MSG_CONFIRM);
+      if(!ok){
+        // ユーザーがキャンセルした場合、タブUIを現状に戻す
+        reflectTabUI();
+        return;
+      }
+      stamps=[]; rebuildList();
+    }
+    setMode(nextMode);
+  }
+
+  // タブクリック
+  tabYouTube.addEventListener('click', function(){ requestModeChange('youtube'); });
+  tabFile.addEventListener('click', function(){ requestModeChange('file'); });
+
+  // キーボード操作（左右矢印でタブ移動、Enter/Spaceで選択）
+  var tablist = document.querySelector('[role="tablist"]');
+  tablist.addEventListener('keydown', function(e){
+    var tabs=[tabYouTube, tabFile];
+    var idx = tabs.indexOf(document.activeElement);
+    if(e.key==='ArrowRight' || e.key==='ArrowLeft'){
+      e.preventDefault();
+      var dir = (e.key==='ArrowRight')? 1 : -1;
+      var next = (idx===-1)? 0 : (idx+dir+tabs.length)%tabs.length;
+      tabs[next].focus();
+    } else if(e.key==='Enter' || e.key===' '){
+      e.preventDefault();
+      if(document.activeElement===tabYouTube) requestModeChange('youtube');
+      if(document.activeElement===tabFile)    requestModeChange('file');
+    }
+  });
+
   // ===== Actions =====
   function loadYouTube(){
     mode='youtube';
+    reflectTabUI();
     isYTVideoReady=false;
     destroyFileVideo();
     var p=$('#player'); if(p) p.style.display='';
@@ -469,84 +600,43 @@
   function handleFileChosen(f){
     if(!f) return;
     var ok=/\.(mp4|mp3|wav)$/i.test(f.name); if(!ok){ alert(ALERT_FILE_TYPES); return; }
-    mode='file'; fileLabel=f.name||''; var p=$('#player'); if(p) p.style.display='none';
+    mode='file'; reflectTabUI();
+    fileLabel=f.name||''; var p=$('#player'); if(p) p.style.display='none';
     var v=createFileVideo(); if(fileURL){ try{ URL.revokeObjectURL(fileURL); }catch(_){ } fileURL=null; }
     isYTVideoReady=false;
     v.src = (fileURL=URL.createObjectURL(f)); v.load(); statusMsg(MSG_LOADING);
   }
 
-  // ===== Mode switch =====
-  function setMode(newMode){
-    mode=newMode;
-    var ytC=$('#ytControls'); var fC=$('#fileControls');
-    if(ytC){ ytC.classList.toggle('hidden', mode!=='youtube'); ytC.style.display=(mode==='youtube')? '' : 'none'; }
-    if(fC){  fC.classList.toggle('hidden',  mode!=='file');    fC.style.display=(mode==='file')? '' : 'none'; }
-    if(mode==='youtube'){
-      destroyFileVideo();
-      var p1=$('#player'); if(p1) p1.style.display='';
-      setControlsEnabled(isYTVideoReady);
-      statusMsg(isYTVideoReady ? MSG_LOADED : MSG_UNLOADED);
-    } else {
-      var p2=$('#player'); if(p2) p2.style.display='none';
-      setControlsEnabled(isFileReady);
-      if(!isFileReady) statusMsg(MSG_UNLOADED);
-    }
-  }
-  function requestModeChange(nextMode){
-    if(nextMode===mode) return;
-    if(stamps && stamps.length>0){
-      var ok=confirm(MSG_CONFIRM);
-      if(!ok){
-        try{
-          var prev=document.querySelector('input[name="mode"][value="'+mode+'"]'); if(prev) prev.checked=true;
-          var other=document.querySelector('input[name="mode"][value="'+nextMode+'"]'); if(other) other.checked=false;
-        }catch(_){ }
-        return;
-      }
-      stamps=[]; rebuildList();
-    }
-    setMode(nextMode);
-  }
-
-  // ===== Wire up UI =====
-  var modeRadios=document.getElementsByName('mode');
-  for(var i=0;i<modeRadios.length;i++){ modeRadios[i].addEventListener('change', function(e){ requestModeChange(e.target.value); }); }
+  // ===== Wire up the rest =====
   var ytBtn=$('#ytLoadBtn'); if(ytBtn){ ytBtn.addEventListener('click', loadYouTube); }
   var fsBtn=$('#fileSelectBtn'); if(fsBtn){ fsBtn.addEventListener('click', selectFile); }
   var fin=$('#fileInput'); if(fin){ fin.addEventListener('change', function(e){ var f=e.target.files && e.target.files[0]; handleFileChosen(f); }); }
   var vi=$('#videoInput'); if(vi){ vi.addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); loadYouTube(); } }); }
 
   var addBtn=$('#addBtn'); if(addBtn){ addBtn.addEventListener('click', function(){ var t=current.getTime(); if(!isFinite(t)) return; stamps.push({time:Math.floor(t),label:''}); rebuildList(); }); }
-  var copyBtn=$('#copyBtn'); if(copyBtn){ copyBtn.addEventListener('click', function(){
-    var txt=$('#preview').value;
-    navigator.clipboard.writeText(txt).then(function(){ statusMsg(MSG_COPIED); }).catch(function(){
-      try{ var ta=$('#preview'); ta.focus(); ta.select(); document.getSelection().removeAllRanges(); }catch(_){}
-      statusMsg(MSG_COPY_FAILED);
-    });
-  }); }
-  var clrBtn=$('#clearBtn'); if(clrBtn){ clrBtn.addEventListener('click', function(){ if(!stamps.length) return; if(!confirm(CONFIRM_CLEAR)) return; stamps=[]; rebuildList(); }); }
+  var copyBtn=$('#copyBtn'); if(copyBtn){ copyBtn.addEventListener('click', function(){ var txt=$('#preview').value; navigator.clipboard.writeText(txt).then(function(){ statusMsg(MSG_COPIED); }).catch(function(){ try{ var ta=$('#preview'); ta.focus(); ta.select(); document.getSelection().removeAllRanges(); }catch(_){ } statusMsg(MSG_COPY_FAILED); }); }); }
+  var clrBtn=$('#clearBtn'); if(clrBtn){ clrBtn.addEventListener('click', function(){ if(!stamps.length) return; if(!confirm(CONFIRM_CLEAR)) return; stamps=[]; rebuildList(); }); });
 
-  // プレビュー自動更新 切替
-  var autoSync=$('#autoSync');
-  if(autoSync){
-    autoSync.addEventListener('change', function(){
-      setPreviewModePill();
-      if(autoSync.checked){ buildPreview(true); } // 自動に戻したら即反映
+  // 編集モーダル
+  var iEdit   = document.querySelector('#editInput');
+  var bSave   = document.querySelector('#editSave');
+  var bCancel = document.querySelector('#editCancel');
+  var eModal  = document.querySelector('#editModal');
+  if (bSave)   bSave.addEventListener('click', saveEditModal);
+  if (bCancel) bCancel.addEventListener('click', closeEditModal);
+  if (iEdit){
+    iEdit.addEventListener('keydown', function(e){
+      if (e.key === 'Enter')  { e.preventDefault(); saveEditModal(); }
+      if (e.key === 'Escape') { e.preventDefault(); closeEditModal(); }
     });
   }
-  // プレビュー手動編集で自動更新OFFに
-  var previewTa=$('#preview');
-  if(previewTa){
-    previewTa.addEventListener('input', function(){
-      var ck=$('#autoSync');
-      if(ck && ck.checked){
-        ck.checked=false;
-        setPreviewModePill();
-      }
+  if (eModal){
+    eModal.addEventListener('click', function(e){
+      if (e.target === eModal) closeEditModal();
     });
   }
 
-  // 連番ラジオ
+  // 連番ラジオ i18n 適用 & 変更時再描画
   var numberingLabelEl=$('#numberingLabel'); if(numberingLabelEl) numberingLabelEl.textContent = LBL_NUM || '連番';
   var numLblNone=$('#numLblNone'); if(numLblNone) numLblNone.textContent = LBL_NUM_NONE || '無し';
   var numLblHead=$('#numLblHead'); if(numLblHead) numLblHead.textContent = LBL_NUM_HEAD || '先頭につける';
@@ -591,9 +681,8 @@
 
   // Start
   requestAnimationFrame(loopUpdateCurrentTime);
-  setMode('youtube');
-  rebuildList();          // 初期の空プレビューをセット
-  buildPreview(true);     // pillなど初期化
+  toggleEmptyTip();
+  setMode('youtube'); // 初期は YouTubeモード
 })();
   </script>
 </body>
