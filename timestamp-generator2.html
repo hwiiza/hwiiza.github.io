@@ -55,9 +55,21 @@
     .time.editable:hover{background:#eef2ff;border-color:#94a3b8}
     .time.editable:focus-visible{outline:2px solid #60a5fa;outline-offset:2px}
 
-    /* ラジオ並び用 */
+    /* 連番ラジオ */
     .numRadios { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
     .numRadios label { display:inline-flex; align-items:center; gap:6px; }
+
+    /* タブ */
+    .tabs { display: flex; gap: 8px; border-bottom: 1px solid #e5e7eb; }
+    .tab {
+      appearance: none; background: transparent; border: none; padding: 10px 14px; border-radius: 10px 10px 0 0;
+      cursor: pointer; font-weight: 600; color:#475569;
+    }
+    .tab:is(:hover,:focus-visible){ background:#f1f5f9; outline: none; }
+    .tab.is-active{
+      color:#0f172a; background:#fff; border:1px solid #e5e7eb; border-bottom-color: transparent; position: relative; top:1px;
+    }
+    .tabpanel { padding-top: 8px; }
   </style>
 </head>
 <body>
@@ -96,28 +108,36 @@
     <span id="opt_numbering_before_title">見出しの前につける</span>
   </div>
 
-  <div class="stack" style="margin-bottom:16px">
-    <div class="row" id="modeRow">
-      <label><input type="radio" name="mode" value="youtube" checked> YouTube</label>
-      <label><input type="radio" name="mode" value="file"> ファイル</label>
-    </div>
+  <!-- ▶ タブ見出し（ラジオ→タブへ変更） -->
+  <div class="tabs" role="tablist" aria-label="モード選択">
+    <button id="tab-youtube" class="tab is-active" role="tab" aria-selected="true" aria-controls="panel-youtube">YouTubeモード</button>
+    <button id="tab-file" class="tab" role="tab" aria-selected="false" aria-controls="panel-file">ファイルモード</button>
+  </div>
+
+  <!-- ▶ タブパネル -->
+  <div id="panel-youtube" class="tabpanel" role="tabpanel" aria-labelledby="tab-youtube">
     <div class="row" id="ytControls">
       <button id="ytLoadBtn" type="button">読み込み</button>
       <input id="videoInput" type="text" placeholder="YouTubeのURL または 動画ID" />
     </div>
-    <div class="row hidden" id="fileControls">
+  </div>
+
+  <div id="panel-file" class="tabpanel hidden" role="tabpanel" aria-labelledby="tab-file">
+    <div class="row" id="fileControls">
       <button id="fileSelectBtn" type="button">ファイルを選択（mp4/mp3/wav）</button>
       <input id="fileInput" type="file" accept="video/mp4,audio/mpeg,audio/wav" class="hidden" />
     </div>
-    <div class="row">
-      <span id="status" class="pill">未読み込み</span>
-    </div>
-    <div class="row">
-      <span>現在位置: <strong id="currentTime" class="time">00:00</strong></span>
-    </div>
   </div>
 
-  <div class="grid">
+  <!-- ステータス行 -->
+  <div class="row">
+    <span id="status" class="pill">未読み込み</span>
+  </div>
+  <div class="row">
+    <span>現在位置: <strong id="currentTime" class="time">00:00</strong></span>
+  </div>
+
+  <div class="grid" style="margin-top:12px">
     <div class="stack">
       <div id="playerWrap"><div id="player"></div></div>
       <div class="row" id="playerActions">
@@ -203,40 +223,18 @@
   function $(sel){ return document.querySelector(sel); }
   function T(id){ var el=document.getElementById(id); return el? (el.textContent||'') : ''; }
   function statusMsg(msg){ var s=$('#status'); if(s) s.textContent=String(msg); }
-  function numberingMode(){
-    var r=document.querySelector('input[name="numbering"]:checked');
-    return r ? r.value : 'none';
-  }
+  function numberingMode(){ var r=document.querySelector('input[name="numbering"]:checked'); return r ? r.value : 'none'; }
 
   // ===== Messages =====
-  var MSG_UNLOADED=T('msg_unloaded');
-  var MSG_LOADING =T('msg_loading');
-  var MSG_LOADED  =T('msg_loaded');
-  var MSG_ERROR   =T('msg_error');
-  var MSG_CONFIRM =T('confirm_text');
-  var PH_HINT     =T('ph_hint');
-  var DLG_TITLE   =T('dlg_title');
-  var DLG_LABEL   =T('dlg_label');
-  var BTN_SAVE    =T('btn_save');
-  var BTN_CANCEL  =T('btn_cancel');
-  var MSG_INVALID_TIME = T('invalid_time');
-  var MSG_COPIED       = T('msg_copied');
-  var MSG_COPY_FAILED  = T('msg_copy_failed');
-  var HINT_EDIT        = T('edit_hint');
-  var BTN_DELETE       = T('btn_delete');
-  var CONFIRM_CLEAR    = T('confirm_clear');
-  var ALERT_NEED_ID    = T('alert_need_id');
-  var ALERT_FILE_TYPES = T('alert_file_types');
-  var IMPORT_OPEN      = T('import_open');
-  var IMPORT_TITLE     = T('import_title');
-  var IMPORT_HINT      = T('import_hint');
-  var IMPORT_APPLY     = T('import_apply');
-  var IMPORT_PLACE     = T('import_placeholder');
-  var MSG_IMPORT_DONE  = T('msg_import_done');
-  var LBL_NUM          = T('opt_numbering_label');
-  var LBL_NUM_NONE     = T('opt_numbering_none');
-  var LBL_NUM_HEAD     = T('opt_numbering_head');
-  var LBL_NUM_BTITLE   = T('opt_numbering_before_title');
+  var MSG_UNLOADED=T('msg_unloaded'), MSG_LOADING=T('msg_loading'), MSG_LOADED=T('msg_loaded');
+  var MSG_ERROR=T('msg_error'), MSG_CONFIRM=T('confirm_text'), PH_HINT=T('ph_hint');
+  var DLG_TITLE=T('dlg_title'), DLG_LABEL=T('dlg_label'), BTN_SAVE=T('btn_save'), BTN_CANCEL=T('btn_cancel');
+  var MSG_INVALID_TIME=T('invalid_time'), MSG_COPIED=T('msg_copied'), MSG_COPY_FAILED=T('msg_copy_failed');
+  var HINT_EDIT=T('edit_hint'), BTN_DELETE=T('btn_delete'), CONFIRM_CLEAR=T('confirm_clear');
+  var ALERT_NEED_ID=T('alert_need_id'), ALERT_FILE_TYPES=T('alert_file_types');
+  var IMPORT_OPEN=T('import_open'), IMPORT_TITLE=T('import_title'), IMPORT_HINT=T('import_hint');
+  var IMPORT_APPLY=T('import_apply'), IMPORT_PLACE=T('import_placeholder'), MSG_IMPORT_DONE=T('msg_import_done');
+  var LBL_NUM=T('opt_numbering_label'), LBL_NUM_NONE=T('opt_numbering_none'), LBL_NUM_HEAD=T('opt_numbering_head'), LBL_NUM_BTITLE=T('opt_numbering_before_title');
 
   // ===== State =====
   var mode='youtube';
@@ -334,13 +332,11 @@
         var li=document.createElement('li'); li.className='stamp';
 
         var time=document.createElement('code'); time.className='time editable';
-        // 「先頭につける」→ 連番(数字のみ) + 半角スペース + mm:ss
         time.textContent=(modeNum==='head'? (String(idx+1)+' ') : '') + fmt(item.time);
         time.title=HINT_EDIT; time.setAttribute('role','button'); time.setAttribute('tabindex','0');
         time.addEventListener('dblclick', function(){ openEditModal(item); });
         time.addEventListener('keydown', function(e){ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); e.stopPropagation(); openEditModal(item); } });
 
-        // 「見出しの前につける」→ number列に数字のみを表示
         var num=document.createElement('span'); num.className='num';
         num.textContent = String(idx+1);
         num.style.display = (modeNum==='beforeTitle')? '' : 'none';
@@ -365,7 +361,7 @@
     var modeNum = numberingMode();
     var lines = stamps.slice().sort(function(a,b){ return a.time-b.time; })
       .map(function(x, idx){
-        var n = String(idx+1); // 数字のみ
+        var n = String(idx+1);
         var t = fmt(x.time);
         var lbl = x.label? ' '+x.label : '';
         if(modeNum==='head')        return n+' '+t+lbl;       // 1 00:00 タイトル
@@ -389,7 +385,7 @@
     if(!stamps.length){ closeImportModal(); return; }
     var z=$('#importTextarea'); var raw = z ? z.value : '';
     if(raw === ''){ statusMsg(MSG_IMPORT_DONE + ' (0件)'); closeImportModal(); return; }
-    var lines = raw.split(/\r?\n/); // 空行も保持
+    var lines = raw.split(/\r?\n/);
     stamps.sort(function(a,b){ return a.time-b.time; });
     var n = Math.min(lines.length, stamps.length);
     for(var i=0;i<n;i++){ stamps[i].label = lines[i]; }
@@ -489,9 +485,80 @@
     isFileReady=false; fileLabel='';
   }
 
+  // ===== Tabs (mode switch) =====
+  var tabYouTube = $('#tab-youtube');
+  var tabFile    = $('#tab-file');
+  var panelYouTube = $('#panel-youtube');
+  var panelFile    = $('#panel-file');
+
+  function reflectTabUI(){
+    var isYT = (mode==='youtube');
+    tabYouTube.classList.toggle('is-active', isYT);
+    tabFile.classList.toggle('is-active', !isYT);
+    tabYouTube.setAttribute('aria-selected', isYT ? 'true' : 'false');
+    tabFile.setAttribute('aria-selected', !isYT ? 'true' : 'false');
+    panelYouTube.classList.toggle('hidden', !isYT);
+    panelFile.classList.toggle('hidden', isYT);
+  }
+
+  function setMode(newMode){
+    mode=newMode;
+    reflectTabUI();
+
+    var ytC=$('#ytControls'); var fC=$('#fileControls');
+    if(ytC){ ytC.classList.toggle('hidden', mode!=='youtube'); ytC.style.display=(mode==='youtube')? '' : 'none'; }
+    if(fC){  fC.classList.toggle('hidden',  mode!=='file');    fC.style.display=(mode==='file')? '' : 'none'; }
+
+    if(mode==='youtube'){
+      destroyFileVideo();
+      var p1=$('#player'); if(p1) p1.style.display='';
+      setControlsEnabled(isYTVideoReady);
+      statusMsg(isYTVideoReady ? MSG_LOADED : MSG_UNLOADED);
+    } else {
+      var p2=$('#player'); if(p2) p2.style.display='none';
+      setControlsEnabled(isFileReady);
+      if(!isFileReady) statusMsg(MSG_UNLOADED);
+    }
+  }
+
+  function requestModeChange(nextMode){
+    if(nextMode===mode) return;
+    if(stamps && stamps.length>0){
+      var ok=confirm(MSG_CONFIRM);
+      if(!ok){
+        reflectTabUI(); // 見た目を戻す
+        return;
+      }
+      stamps=[]; rebuildList();
+    }
+    setMode(nextMode);
+  }
+
+  // タブクリック
+  tabYouTube.addEventListener('click', function(){ requestModeChange('youtube'); });
+  tabFile.addEventListener('click', function(){ requestModeChange('file'); });
+
+  // キーボード操作（左右矢印でタブ移動、Enter/Spaceで選択）
+  var tablist = document.querySelector('[role="tablist"]');
+  tablist.addEventListener('keydown', function(e){
+    var tabs=[tabYouTube, tabFile];
+    var idx = tabs.indexOf(document.activeElement);
+    if(e.key==='ArrowRight' || e.key==='ArrowLeft'){
+      e.preventDefault();
+      var dir = (e.key==='ArrowRight')? 1 : -1;
+      var next = (idx===-1)? 0 : (idx+dir+tabs.length)%tabs.length;
+      tabs[next].focus();
+    } else if(e.key==='Enter' || e.key===' '){
+      e.preventDefault();
+      if(document.activeElement===tabYouTube) requestModeChange('youtube');
+      if(document.activeElement===tabFile)    requestModeChange('file');
+    }
+  });
+
   // ===== Actions =====
   function loadYouTube(){
     mode='youtube';
+    reflectTabUI();
     isYTVideoReady=false;
     destroyFileVideo();
     var p=$('#player'); if(p) p.style.display='';
@@ -506,48 +573,32 @@
   function handleFileChosen(f){
     if(!f) return;
     var ok=/\.(mp4|mp3|wav)$/i.test(f.name); if(!ok){ alert(ALERT_FILE_TYPES); return; }
-    mode='file'; fileLabel=f.name||''; var p=$('#player'); if(p) p.style.display='none';
+    mode='file'; reflectTabUI();
+    fileLabel=f.name||''; var p=$('#player'); if(p) p.style.display='none';
     var v=createFileVideo(); if(fileURL){ try{ URL.revokeObjectURL(fileURL); }catch(_){ } fileURL=null; }
     isYTVideoReady=false;
     v.src = (fileURL=URL.createObjectURL(f)); v.load(); statusMsg(MSG_LOADING);
   }
 
-  // ===== Mode switch =====
-  function setMode(newMode){
-    mode=newMode;
-    var ytC=$('#ytControls'); var fC=$('#fileControls');
-    if(ytC){ ytC.classList.toggle('hidden', mode!=='youtube'); ytC.style.display=(mode==='youtube')? '' : 'none'; }
-    if(fC){  fC.classList.toggle('hidden',  mode!=='file');    fC.style.display=(mode==='file')? '' : 'none'; }
-    if(mode==='youtube'){
-      destroyFileVideo();
-      var p1=$('#player'); if(p1) p1.style.display='';
-      setControlsEnabled(isYTVideoReady);
-      statusMsg(isYTVideoReady ? MSG_LOADED : MSG_UNLOADED);
-    } else {
-      var p2=$('#player'); if(p2) p2.style.display='none';
-      setControlsEnabled(isFileReady);
-      if(!isFileReady) statusMsg(MSG_UNLOADED);
-    }
-  }
-  function requestModeChange(nextMode){
-    if(nextMode===mode) return;
-    if(stamps && stamps.length>0){
-      var ok=confirm(MSG_CONFIRM);
-      if(!ok){
-        try{
-          var prev=document.querySelector('input[name="mode"][value="'+mode+'"]'); if(prev) prev.checked=true;
-          var other=document.querySelector('input[name="mode"][value="'+nextMode+'"]'); if(other) other.checked=false;
-        }catch(_){ }
-        return;
-      }
-      stamps=[]; rebuildList();
-    }
-    setMode(nextMode);
+  // parse video id
+  function parseVideoId(input){
+    if(!input) return '';
+    var raw=input.trim();
+    if(/^[a-zA-Z0-9_-]{10,}$/.test(raw) && raw.indexOf('http')===-1) return raw;
+    try{
+      var u=new URL(raw);
+      var host=u.hostname.replace(/^www\./,'');
+      var segs=u.pathname.split('/').filter(function(x){ return x; });
+      if(host.indexOf('youtu.be')!==-1 && segs[0]) return segs[0];
+      var v=u.searchParams.get('v'); if(v) return v;
+      if(segs[0]==='shorts' && segs[1]) return segs[1];
+      if(segs[0]==='embed' && segs[1]) return segs[1];
+      if(segs.length) return segs[segs.length-1];
+    }catch(_){ return raw; }
+    return raw;
   }
 
-  // ===== Wire up UI =====
-  var modeRadios=document.getElementsByName('mode');
-  for(var i=0;i<modeRadios.length;i++){ modeRadios[i].addEventListener('change', function(e){ requestModeChange(e.target.value); }); }
+  // Wire up buttons
   var ytBtn=$('#ytLoadBtn'); if(ytBtn){ ytBtn.addEventListener('click', loadYouTube); }
   var fsBtn=$('#fileSelectBtn'); if(fsBtn){ fsBtn.addEventListener('click', selectFile); }
   var fin=$('#fileInput'); if(fin){ fin.addEventListener('change', function(e){ var f=e.target.files && e.target.files[0]; handleFileChosen(f); }); }
@@ -555,7 +606,14 @@
 
   var addBtn=$('#addBtn'); if(addBtn){ addBtn.addEventListener('click', function(){ var t=current.getTime(); if(!isFinite(t)) return; stamps.push({time:Math.floor(t),label:''}); rebuildList(); }); }
   var copyBtn=$('#copyBtn'); if(copyBtn){ copyBtn.addEventListener('click', function(){ var txt=$('#preview').value; navigator.clipboard.writeText(txt).then(function(){ statusMsg(MSG_COPIED); }).catch(function(){ try{ var ta=$('#preview'); ta.focus(); ta.select(); document.getSelection().removeAllRanges(); }catch(_){ } statusMsg(MSG_COPY_FAILED); }); }); }
-  var clrBtn=$('#clearBtn'); if(clrBtn){ clrBtn.addEventListener('click', function(){ if(!stamps.length) return; if(!confirm(CONFIRM_CLEAR)) return; stamps=[]; rebuildList(); }); }
+  var clrBtn=$('#clearBtn'); 
+  if(clrBtn){
+    clrBtn.addEventListener('click', function(){
+      if(!stamps.length) return;
+      if(!confirm(CONFIRM_CLEAR)) return;
+      stamps=[]; rebuildList();
+    });
+  }
 
   // 編集モーダル
   var iEdit   = document.querySelector('#editInput');
@@ -581,7 +639,6 @@
   var numLblNone=$('#numLblNone'); if(numLblNone) numLblNone.textContent = LBL_NUM_NONE || '無し';
   var numLblHead=$('#numLblHead'); if(numLblHead) numLblHead.textContent = LBL_NUM_HEAD || '先頭につける';
   var numLblBefore=$('#numLblBefore'); if(numLblBefore) numLblBefore.textContent = LBL_NUM_BTITLE || '見出しの前につける';
-
   var radios=document.querySelectorAll('input[name="numbering"]');
   radios.forEach(function(r){ r.addEventListener('change', function(){ rebuildList(); buildPreview(); }); });
 
@@ -602,27 +659,10 @@
   }
   var importModal=$('#importModal'); if(importModal){ importModal.addEventListener('click', function(e){ if(e.target===importModal) closeImportModal(); }); }
 
-  function parseVideoId(input){
-    if(!input) return '';
-    var raw=input.trim();
-    if(/^[a-zA-Z0-9_-]{10,}$/.test(raw) && raw.indexOf('http')===-1) return raw;
-    try{
-      var u=new URL(raw);
-      var host=u.hostname.replace(/^www\./,'');
-      var segs=u.pathname.split('/').filter(function(x){ return x; });
-      if(host.indexOf('youtu.be')!==-1 && segs[0]) return segs[0];
-      var v=u.searchParams.get('v'); if(v) return v;
-      if(segs[0]==='shorts' && segs[1]) return segs[1];
-      if(segs[0]==='embed' && segs[1]) return segs[1];
-      if(segs.length) return segs[segs.length-1];
-    }catch(_){ return raw; }
-    return raw;
-  }
-
   // Start
   requestAnimationFrame(loopUpdateCurrentTime);
   toggleEmptyTip();
-  setMode('youtube');
+  setMode('youtube'); // 初期は YouTubeモード
 })();
   </script>
 </body>
