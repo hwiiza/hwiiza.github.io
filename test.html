@@ -24,7 +24,6 @@
     button { padding: 8px 12px; border-radius: 6px; border: 1px solid #d1d5db; background: #f9fafb; cursor: pointer; }
     button:hover { background: #f3f4f6; }
     li.summary { cursor: default; background: #f8fafc; border-style: dashed; }
-
     /* ===== モーダル ===== */
     .modal-backdrop {
       position: fixed; inset: 0; background: rgba(0,0,0,.35);
@@ -241,13 +240,17 @@
       const main = hasMs ? s.slice(0, s.lastIndexOf('.')) : s;
       const msPart = hasMs ? s.slice(s.lastIndexOf('.') + 1) : '';
       const parts = main.split(':').map(v => v.trim());
-      if (parts.some(p => isNaN(Number(p)))) return null;
+      if (parts.some(p => p === '' || isNaN(Number(p)))) return null;
       let hh = 0, mm = 0, ss = 0;
       if (parts.length === 2) [mm, ss] = parts.map(Number);
       else if (parts.length === 3) [hh, mm, ss] = parts.map(Number);
       else return null;
+      if ((parts.length === 2 && (mm >= 60 || ss >= 60)) || (parts.length === 3 && (mm >= 60 || ss >= 60))) return null;
       let msec = 0;
-      if (hasMs) msec = Number(msPart.padEnd(3,'0'));
+      if (hasMs) {
+        if (!/^\d{1,3}$/.test(msPart)) return null;
+        msec = Number(msPart.padEnd(3, '0'));
+      }
       return ((hh*3600+mm*60+ss)*1000)+msec;
     }
 
@@ -256,19 +259,25 @@
       const li = document.createElement('li');
       li.dataset.id = String(item.id);
       const mode = getNumberingMode();
+
       const numSpan  = document.createElement('span'); numSpan.className  = 'num';
       const tsSpan   = document.createElement('span'); tsSpan.className   = 'ts';
       const nameSpan = document.createElement('span'); nameSpan.className = 'name';
+
       tsSpan.textContent = formatTime(item.startMs, showMsCheckbox.checked);
       nameSpan.textContent = item.name;
       tsSpan.title = 'ダブルクリックで時刻を編集';
+
       if (mode === 'head') {
-        numSpan.textContent = idx+1; li.append(numSpan, tsSpan, nameSpan);
+        numSpan.textContent = idx + 1;
+        li.append(numSpan, tsSpan, nameSpan);
       } else if (mode === 'beforeName') {
-        numSpan.textContent = idx+1; li.append(tsSpan, numSpan, nameSpan);
+        numSpan.textContent = idx + 1;
+        li.append(tsSpan, numSpan, nameSpan);
       } else {
         li.append(tsSpan, nameSpan);
       }
+
       tsSpan.addEventListener('dblclick', (e) => { e.preventDefault(); openTimeModal(idx); });
       return li;
     }
@@ -276,18 +285,41 @@
     function renderList() {
       fileListEl.innerHTML = '';
       filesData.forEach((item, idx) => fileListEl.appendChild(renderRow(item, idx)));
+
+      // Repeat の連番表示も連番設定に追従
       if (showRepeatCheckbox.checked) {
-        const li = document.createElement('li'); li.className='summary';
-        const tsSpan = document.createElement('span'); tsSpan.className='ts';
+        const li = document.createElement('li'); li.className = 'summary';
+        const mode = getNumberingMode();
+
+        const numSpan  = document.createElement('span'); numSpan.className  = 'num';
+        const tsSpan   = document.createElement('span'); tsSpan.className   = 'ts';
+        const nameSpan = document.createElement('span'); nameSpan.className = 'name';
+
         tsSpan.textContent = formatTime(totalDurationMs(), showMsCheckbox.checked);
-        const nameSpan=document.createElement('span'); nameSpan.className='name'; nameSpan.textContent='Repeat';
-        li.append(tsSpan,nameSpan);
+        nameSpan.textContent = 'Repeat';
+
+        if (mode === 'head') {
+          numSpan.textContent = filesData.length + 1;
+          li.append(numSpan, tsSpan, nameSpan);
+        } else if (mode === 'beforeName') {
+          numSpan.textContent = filesData.length + 1;
+          li.append(tsSpan, numSpan, nameSpan);
+        } else {
+          li.append(tsSpan, nameSpan);
+        }
         fileListEl.appendChild(li);
       }
     }
+
     function updateTotalTime() {
       totalDurationEl.textContent = '合計再生時間: ' + formatTime(totalDurationMs(), showMsCheckbox.checked);
     }
+
+    /* ===== 設定変更（←ここが復活ポイント） ===== */
+    showMsCheckbox.addEventListener('change', () => { renderList(); updateTotalTime(); });
+    showRepeatCheckbox.addEventListener('change', () => { renderList(); updateTotalTime(); });
+    numberingRadios.forEach(r => r.addEventListener('change', () => { renderList(); updateTotalTime(); }));
+    copyModeRadios.forEach(r => r.addEventListener('change', () => { /* UIのみ */ }));
 
     /* ===== コピー ===== */
     copyBtn.addEventListener('click', async () => {
@@ -296,6 +328,7 @@
       const copyMode = getCopyMode();
       const numberingMode = getNumberingMode();
       let lines = [];
+
       if (copyMode === 'time') {
         lines = filesData.map(d => formatTime(d.startMs, withMs));
         if (showRepeatCheckbox.checked) lines.push(formatTime(totalDurationMs(), withMs));
@@ -305,15 +338,19 @@
       } else {
         lines = filesData.map((d, idx) => {
           const ts = formatTime(d.startMs, withMs);
-          if (numberingMode === 'head') return `${idx+1} ${ts} ${d.name}`;
-          if (numberingMode === 'beforeName') return `${ts} ${idx+1} ${d.name}`;
+          if (numberingMode === 'head')        return `${idx + 1} ${ts} ${d.name}`;
+          if (numberingMode === 'beforeName')  return `${ts} ${idx + 1} ${d.name}`;
           return `${ts} ${d.name}`;
         });
         if (showRepeatCheckbox.checked) {
           const ts = formatTime(totalDurationMs(), withMs);
-          lines.push(`${ts} Repeat`);
+          const n = filesData.length + 1;
+          if (numberingMode === 'head')        lines.push(`${n} ${ts} Repeat`);
+          else if (numberingMode === 'beforeName') lines.push(`${ts} ${n} Repeat`);
+          else                                  lines.push(`${ts} Repeat`);
         }
       }
+
       await navigator.clipboard.writeText(lines.join('\n'));
       alert('コピーしました！');
     });
