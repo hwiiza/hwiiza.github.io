@@ -15,35 +15,32 @@
     .num  { min-width: 2ch; text-align: right; }
     .ts   { font-family: monospace; min-width: 7ch; cursor: pointer; text-decoration: underline dotted; }
     .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
     .controls { display: grid; row-gap: 10px; margin-bottom: 10px; }
-    .row      { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-    .group    {
+    .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .group {
       display: inline-flex; gap: 8px; align-items: center;
       padding: 6px 8px; border: 1px solid #e5e7eb; border-radius: 8px;
     }
-    button { padding: 8px 12px; border-radius: 6px; border: 1px solid #d1d5db; background: #f9fafb; cursor: pointer; }
-    button:hover { background: #f3f4f6; }
+    button, .btn {
+      padding: 8px 12px; border-radius: 6px; border: 1px solid #d1d5db; background: #f9fafb; cursor: pointer;
+      display: inline-flex; align-items: center; justify-content: center; text-decoration: none;
+    }
+    button:hover, .btn:hover { background: #f3f4f6; }
     li.summary { cursor: default; background: #f8fafc; border-style: dashed; }
 
-    /* ===== 曲一覧エリアをドロップゾーン化 ===== */
+    /* 曲一覧エリアをドロップゾーン化 */
     .list-dropzone {
-      border: 2px dashed #cbd5e1;
-      border-radius: 10px;
-      padding: 12px;
-      background: #f8fafc;
-      min-height: 120px; /* 空でも掴みやすい高さ */
-      margin-bottom: 8px;
-      position: relative;
+      border: 2px dashed #cbd5e1; border-radius: 10px; padding: 12px;
+      background: #f8fafc; min-height: 120px; margin-bottom: 8px; position: relative;
     }
-    .list-dropzone.dragover {
-      background: #eef2ff;
-      border-color: #6366f1;
-    }
-    .empty-hint {
-      color: #64748b; font-size: 14px; text-align: center;
-      padding: 16px 8px;
-    }
+    .list-dropzone.dragover { background: #eef2ff; border-color: #6366f1; }
+    .empty-hint { color: #64748b; font-size: 14px; text-align: center; padding: 16px 8px; }
     .empty-hint small { display: block; margin-top: 6px; color: #94a3b8; }
+
+    /* カスタム「ファイル選択」ボタン */
+    #fileInput { position: absolute; width: 0; height: 0; opacity: 0; pointer-events: none; }
+    #fileNameLabel { color: #6b7280; }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
 </head>
@@ -51,8 +48,15 @@
   <h2>音声ファイル タイムスタンプジェネレータ</h2>
 
   <div class="controls">
+    <!-- 1行目：ファイル選択 選択されていません -->
     <div class="row">
       <input type="file" id="fileInput" accept=".mp3,.wav" multiple />
+      <label for="fileInput" class="btn" id="fileSelectBtn">ファイル選択</label>
+      <span id="fileNameLabel">選択されていません</span>
+    </div>
+
+    <!-- 2行目：コピー内容 全て 時間だけ 曲名だけ（改行して分離） -->
+    <div class="row">
       <span class="group" role="group" aria-label="コピー内容">
         <strong>コピー内容</strong>
         <label><input type="radio" name="copyMode" value="all" checked /> 全て</label>
@@ -61,6 +65,8 @@
       </span>
       <button id="copyTs">タイムスタンプをコピー</button>
     </div>
+
+    <!-- 3行目：連番やオプション -->
     <div class="row">
       <span class="group" role="group" aria-label="連番付与">
         <strong>連番付与</strong>
@@ -73,19 +79,18 @@
     </div>
   </div>
 
-  <!-- ▼ ここ（曲一覧）をドロップゾーンに -->
+  <!-- 曲一覧（ドロップ対応） -->
   <div id="listDropzone" class="list-dropzone" aria-label="曲一覧（ドラッグ＆ドロップ対応）">
     <ul id="fileList"></ul>
     <div id="emptyHint" class="empty-hint">
       ここに .mp3 / .wav をドラッグ＆ドロップ<br>
-      <small>または上の「ファイルを選択」から読み込み</small>
+      <small>または上の「ファイル選択」から読み込み</small>
     </div>
   </div>
-  <!-- ▲ ドロップゾーンは合計再生時間の“上”に配置 -->
 
   <p id="totalDuration">合計再生時間: 00:00</p>
 
-  <!-- ===== モーダル ===== -->
+  <!-- モーダル -->
   <div id="modalBackdrop" class="modal-backdrop" aria-hidden="true" style="display:none">
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
       <h3 id="modalTitle">開始時刻を編集</h3>
@@ -104,6 +109,8 @@
 
   <script>
     const fileInput = document.getElementById('fileInput');
+    const fileNameLabel = document.getElementById('fileNameLabel');
+
     const listDropzone = document.getElementById('listDropzone');
     const emptyHint = document.getElementById('emptyHint');
     const fileListEl = document.getElementById('fileList');
@@ -144,12 +151,11 @@
       }
     });
 
-    /* ===== ファイル取り込み共通処理 ===== */
+    /* ファイル取り込み共通 */
     async function handleFiles(inputFiles) {
       const files = Array.from(inputFiles);
       if (!files.length) return;
 
-      // 音声のみ受け付け（mp3/wav）
       const accepted = files.filter(f => {
         const isAudio = f.type.startsWith('audio/');
         const byExt = /\.mp3$/i.test(f.name) || /\.wav$/i.test(f.name);
@@ -160,8 +166,7 @@
         return;
       }
 
-      // 置き換え（※追加読み込みにしたい場合は次行を削除）
-      filesData = [];
+      filesData = []; // 置き換え（追加にしたい場合は削除）
 
       for (const file of accepted) {
         const url = URL.createObjectURL(file);
@@ -175,17 +180,24 @@
       recalcStartsFrom(0, 0);
       renderList();
       updateTotalTime();
+
+      // ファイル名表示（例: 3件選択 / 1件ならその名前）
+      fileNameLabel.textContent = accepted.length === 1 ? accepted[0].name : `${accepted.length}件選択`;
     }
 
-    // ファイル選択
-    fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
+    // ファイル選択（カスタムボタン）
+    fileInput.addEventListener('change', (e) => {
+      const f = e.target.files;
+      if (!f || !f.length) {
+        fileNameLabel.textContent = '選択されていません';
+      }
+      handleFiles(f);
+    });
 
-    /* ===== ドラッグ＆ドロップ（曲一覧で受け付け） ===== */
-    // タブ／ウィンドウに誤ドロップしても遷移しないよう抑止
+    /* D&D（曲一覧で受け付け） */
     ['dragover', 'drop'].forEach(type => {
       window.addEventListener(type, (e) => e.preventDefault(), { passive: false });
     });
-
     ['dragenter', 'dragover'].forEach(type => {
       listDropzone.addEventListener(type, (e) => {
         e.preventDefault();
@@ -195,20 +207,16 @@
     ;['dragleave', 'drop'].forEach(type => {
       listDropzone.addEventListener(type, () => listDropzone.classList.remove('dragover'));
     });
-
     listDropzone.addEventListener('drop', async (e) => {
       e.preventDefault();
       const dt = e.dataTransfer;
       const files = dt.items && dt.items.length
-        ? Array.from(dt.items)
-            .filter(it => it.kind === 'file')
-            .map(it => it.getAsFile())
-            .filter(Boolean)
+        ? Array.from(dt.items).filter(it => it.kind === 'file').map(it => it.getAsFile()).filter(Boolean)
         : Array.from(dt.files);
       await handleFiles(files);
     });
 
-    /* ===== 計算関数 ===== */
+    /* 計算関数 */
     function recalcStartsFrom(idx, newStartMs) {
       if (!filesData.length) return;
       idx = Math.max(0, Math.min(idx, filesData.length - 1));
@@ -217,7 +225,6 @@
         filesData[i].startMs = filesData[i - 1].startMs + filesData[i - 1].durationMs;
       }
     }
-
     function getNumberingMode() {
       const checked = [...numberingRadios].find(r => r.checked);
       return checked ? checked.value : 'none';
@@ -226,7 +233,6 @@
       const checked = [...copyModeRadios].find(r => r.checked);
       return checked ? checked.value : 'all';
     }
-
     function totalDurationMs() {
       return filesData.reduce((s, d) => s + d.durationMs, 0);
     }
@@ -250,15 +256,14 @@
       }
     }
 
-    /* ===== モーダル ===== */
+    /* モーダル */
     function openTimeModal(index) {
       modalTargetIndex = index;
       modalError.textContent = '';
       timeInput.value = formatTime(filesData[index].startMs, showMsCheckbox.checked);
       modalBackdrop.style.display = 'flex';
       modalBackdrop.setAttribute('aria-hidden', 'false');
-      timeInput.focus();
-      timeInput.select();
+      timeInput.focus(); timeInput.select();
     }
     function closeTimeModal() {
       modalBackdrop.style.display = 'none';
@@ -281,9 +286,7 @@
     }
     btnOk.addEventListener('click', commitTimeModal);
     btnCancel.addEventListener('click', closeTimeModal);
-    modalBackdrop.addEventListener('click', (e) => {
-      if (e.target === modalBackdrop) closeTimeModal();
-    });
+    modalBackdrop.addEventListener('click', (e) => { if (e.target === modalBackdrop) closeTimeModal(); });
     document.addEventListener('keydown', (e) => {
       if (modalBackdrop.getAttribute('aria-hidden') === 'false') {
         if (e.key === 'Escape') closeTimeModal();
@@ -302,7 +305,7 @@
       if (parts.length === 2) [mm, ss] = parts.map(Number);
       else if (parts.length === 3) [hh, mm, ss] = parts.map(Number);
       else return null;
-      if ((parts.length === 2 && (mm >= 60 || ss >= 60)) || (parts.length === 3 && (mm >= 60 || ss >= 60))) return null;
+      if ((mm >= 60 || ss >= 60)) return null;
       let msec = 0;
       if (hasMs) {
         if (!/^\d{1,3}$/.test(msPart)) return null;
@@ -311,7 +314,7 @@
       return ((hh*3600+mm*60+ss)*1000)+msec;
     }
 
-    /* ===== 表示 ===== */
+    /* 表示 */
     function renderRow(item, idx) {
       const li = document.createElement('li');
       li.dataset.id = String(item.id);
@@ -343,7 +346,6 @@
       fileListEl.innerHTML = '';
       filesData.forEach((item, idx) => fileListEl.appendChild(renderRow(item, idx)));
 
-      // Repeat の連番表示も連番設定に追従
       if (showRepeatCheckbox.checked) {
         const li = document.createElement('li'); li.className = 'summary';
         const mode = getNumberingMode();
@@ -367,7 +369,6 @@
         fileListEl.appendChild(li);
       }
 
-      // 空表示の切り替え
       emptyHint.style.display = filesData.length ? 'none' : 'block';
     }
 
@@ -375,13 +376,13 @@
       totalDurationEl.textContent = '合計再生時間: ' + formatTime(totalDurationMs(), showMsCheckbox.checked);
     }
 
-    /* ===== 設定変更 ===== */
+    /* 設定変更 */
     showMsCheckbox.addEventListener('change', () => { renderList(); updateTotalTime(); });
     showRepeatCheckbox.addEventListener('change', () => { renderList(); updateTotalTime(); });
     numberingRadios.forEach(r => r.addEventListener('change', () => { renderList(); updateTotalTime(); }));
-    copyModeRadios.forEach(r => r.addEventListener('change', () => { /* UIのみ */ }));
+    copyModeRadios.forEach(r => r.addEventListener('change', () => {}));
 
-    /* ===== コピー ===== */
+    /* コピー */
     copyBtn.addEventListener('click', async () => {
       if (!filesData.length) { alert('コピーするデータがありません'); return; }
       const withMs = showMsCheckbox.checked;
@@ -415,7 +416,7 @@
       alert('コピーしました！');
     });
 
-    // 初期表示（空ヒントを出す）
+    // 初期表示
     renderList();
   </script>
 </body>
