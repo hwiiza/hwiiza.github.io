@@ -25,43 +25,25 @@
     button:hover { background: #f3f4f6; }
     li.summary { cursor: default; background: #f8fafc; border-style: dashed; }
 
-    /* ===== ドロップゾーン（★追加） ===== */
-    .dropzone {
-      border: 2px dashed #9ca3af;
+    /* ===== 曲一覧エリアをドロップゾーン化 ===== */
+    .list-dropzone {
+      border: 2px dashed #cbd5e1;
       border-radius: 10px;
-      padding: 18px 16px;
-      background: #f9fafb;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      flex-wrap: wrap;
+      padding: 12px;
+      background: #f8fafc;
+      min-height: 120px; /* 空でも掴みやすい高さ */
+      margin-bottom: 8px;
+      position: relative;
     }
-    .dropzone .hint { color: #6b7280; font-size: 14px; }
-    .dropzone.dragover {
+    .list-dropzone.dragover {
       background: #eef2ff;
       border-color: #6366f1;
     }
-
-    /* ===== モーダル ===== */
-    .modal-backdrop {
-      position: fixed; inset: 0; background: rgba(0,0,0,.35);
-      display: none; align-items: center; justify-content: center; z-index: 9999;
+    .empty-hint {
+      color: #64748b; font-size: 14px; text-align: center;
+      padding: 16px 8px;
     }
-    .modal {
-      background: #fff; border-radius: 10px; padding: 16px; width: min(420px, 92vw);
-      box-shadow: 0 10px 30px rgba(0,0,0,.2);
-    }
-    .modal h3 { margin: 0 0 10px; font-size: 16px; }
-    .modal .field { display: grid; gap: 6px; margin-bottom: 12px; }
-    .modal input[type="text"] {
-      font-family: monospace; font-size: 16px; padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 8px;
-    }
-    .modal .hint { font-size: 12px; color: #6b7280; }
-    .modal .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
-    .btn-primary { background: #2563eb; color: white; border: 1px solid #1d4ed8; }
-    .btn-primary:hover { background: #1d4ed8; }
-    .btn-ghost { background: #f9fafb; }
-    .modal-error { color: #dc2626; font-size: 12px; min-height: 1.2em; }
+    .empty-hint small { display: block; margin-top: 6px; color: #94a3b8; }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
 </head>
@@ -69,13 +51,8 @@
   <h2>音声ファイル タイムスタンプジェネレータ</h2>
 
   <div class="controls">
-    <!-- ★ ドロップゾーンを追加（inputは従来どおり併用可） -->
-    <div class="dropzone" id="dropzone" aria-label="音声ファイルのドラッグ＆ドロップ領域">
-      <input type="file" id="fileInput" accept=".mp3,.wav" multiple />
-      <span class="hint">または ここに .mp3 / .wav をドラッグ＆ドロップ</span>
-    </div>
-
     <div class="row">
+      <input type="file" id="fileInput" accept=".mp3,.wav" multiple />
       <span class="group" role="group" aria-label="コピー内容">
         <strong>コピー内容</strong>
         <label><input type="radio" name="copyMode" value="all" checked /> 全て</label>
@@ -96,11 +73,20 @@
     </div>
   </div>
 
-  <ul id="fileList"></ul>
+  <!-- ▼ ここ（曲一覧）をドロップゾーンに -->
+  <div id="listDropzone" class="list-dropzone" aria-label="曲一覧（ドラッグ＆ドロップ対応）">
+    <ul id="fileList"></ul>
+    <div id="emptyHint" class="empty-hint">
+      ここに .mp3 / .wav をドラッグ＆ドロップ<br>
+      <small>または上の「ファイルを選択」から読み込み</small>
+    </div>
+  </div>
+  <!-- ▲ ドロップゾーンは合計再生時間の“上”に配置 -->
+
   <p id="totalDuration">合計再生時間: 00:00</p>
 
   <!-- ===== モーダル ===== -->
-  <div id="modalBackdrop" class="modal-backdrop" aria-hidden="true">
+  <div id="modalBackdrop" class="modal-backdrop" aria-hidden="true" style="display:none">
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
       <h3 id="modalTitle">開始時刻を編集</h3>
       <div class="field">
@@ -118,7 +104,8 @@
 
   <script>
     const fileInput = document.getElementById('fileInput');
-    const dropzone  = document.getElementById('dropzone'); // ★
+    const listDropzone = document.getElementById('listDropzone');
+    const emptyHint = document.getElementById('emptyHint');
     const fileListEl = document.getElementById('fileList');
     const totalDurationEl = document.getElementById('totalDuration');
     const showMsCheckbox = document.getElementById('showMs');
@@ -157,7 +144,7 @@
       }
     });
 
-    /* ===== ファイル取り込み共通処理（★新設） ===== */
+    /* ===== ファイル取り込み共通処理 ===== */
     async function handleFiles(inputFiles) {
       const files = Array.from(inputFiles);
       if (!files.length) return;
@@ -173,7 +160,7 @@
         return;
       }
 
-      // ※選択やドロップの度に置き換え（必要なら append に変更可）
+      // 置き換え（※追加読み込みにしたい場合は次行を削除）
       filesData = [];
 
       for (const file of accepted) {
@@ -190,30 +177,26 @@
       updateTotalTime();
     }
 
-    // 既存: ファイル選択
+    // ファイル選択
     fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
 
-    /* ===== ドラッグ＆ドロップ（★追加） ===== */
-    // ブラウザ既定の挙動（ファイルを開く）を阻止
+    /* ===== ドラッグ＆ドロップ（曲一覧で受け付け） ===== */
+    // タブ／ウィンドウに誤ドロップしても遷移しないよう抑止
     ['dragover', 'drop'].forEach(type => {
-      window.addEventListener(type, (e) => {
-        e.preventDefault();
-      });
+      window.addEventListener(type, (e) => e.preventDefault(), { passive: false });
     });
 
-    // 見た目のハイライト
     ['dragenter', 'dragover'].forEach(type => {
-      dropzone.addEventListener(type, (e) => {
+      listDropzone.addEventListener(type, (e) => {
         e.preventDefault();
-        dropzone.classList.add('dragover');
+        listDropzone.classList.add('dragover');
       });
     });
     ;['dragleave', 'drop'].forEach(type => {
-      dropzone.addEventListener(type, () => dropzone.classList.remove('dragover'));
+      listDropzone.addEventListener(type, () => listDropzone.classList.remove('dragover'));
     });
 
-    // ドロップ受付
-    dropzone.addEventListener('drop', async (e) => {
+    listDropzone.addEventListener('drop', async (e) => {
       e.preventDefault();
       const dt = e.dataTransfer;
       const files = dt.items && dt.items.length
@@ -222,7 +205,6 @@
             .map(it => it.getAsFile())
             .filter(Boolean)
         : Array.from(dt.files);
-
       await handleFiles(files);
     });
 
@@ -384,6 +366,9 @@
         }
         fileListEl.appendChild(li);
       }
+
+      // 空表示の切り替え
+      emptyHint.style.display = filesData.length ? 'none' : 'block';
     }
 
     function updateTotalTime() {
@@ -429,6 +414,9 @@
       await navigator.clipboard.writeText(lines.join('\n'));
       alert('コピーしました！');
     });
+
+    // 初期表示（空ヒントを出す）
+    renderList();
   </script>
 </body>
 </html>
