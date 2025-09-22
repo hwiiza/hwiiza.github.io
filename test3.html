@@ -38,9 +38,35 @@
     .empty-hint { color: #64748b; font-size: 14px; text-align: center; padding: 16px 8px; }
     .empty-hint small { display: block; margin-top: 6px; color: #94a3b8; }
 
-    /* カスタム「ファイル選択」ボタン */
+    /* ネイティブ input は隠してカスタムボタンで操作 */
     #fileInput { position: absolute; width: 0; height: 0; opacity: 0; pointer-events: none; }
     #fileNameLabel { color: #6b7280; }
+
+    /* ===== モーダル（中央表示／背景スクロール固定） ===== */
+    .modal-backdrop {
+      position: fixed; inset: 0; background: rgba(0,0,0,.35);
+      display: none;
+      align-items: center; justify-content: center;
+      z-index: 9999;
+    }
+    .modal-backdrop.open { display: flex; }
+    body.modal-open { overflow: hidden; }
+
+    .modal {
+      background: #fff; border-radius: 10px; padding: 16px; width: min(420px, 92vw);
+      box-shadow: 0 10px 30px rgba(0,0,0,.2);
+    }
+    .modal h3 { margin: 0 0 10px; font-size: 16px; }
+    .modal .field { display: grid; gap: 6px; margin-bottom: 12px; }
+    .modal input[type="text"] {
+      font-family: monospace; font-size: 16px; padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 8px;
+    }
+    .modal .hint { font-size: 12px; color: #6b7280; }
+    .modal .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
+    .btn-primary { background: #2563eb; color: white; border: 1px solid #1d4ed8; }
+    .btn-primary:hover { background: #1d4ed8; }
+    .btn-ghost { background: #f9fafb; }
+    .modal-error { color: #dc2626; font-size: 12px; min-height: 1.2em; }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
 </head>
@@ -55,7 +81,7 @@
       <span id="fileNameLabel">選択されていません</span>
     </div>
 
-    <!-- 2行目：コピー内容 全て 時間だけ 曲名だけ（改行して分離） -->
+    <!-- 2行目：コピー内容 全て 時間だけ 曲名だけ -->
     <div class="row">
       <span class="group" role="group" aria-label="コピー内容">
         <strong>コピー内容</strong>
@@ -90,8 +116,8 @@
 
   <p id="totalDuration">合計再生時間: 00:00</p>
 
-  <!-- モーダル -->
-  <div id="modalBackdrop" class="modal-backdrop" aria-hidden="true" style="display:none">
+  <!-- モーダル（中央表示） -->
+  <div id="modalBackdrop" class="modal-backdrop" aria-hidden="true">
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
       <h3 id="modalTitle">開始時刻を編集</h3>
       <div class="field">
@@ -166,7 +192,7 @@
         return;
       }
 
-      filesData = []; // 置き換え（追加にしたい場合は削除）
+      filesData = []; // 置き換え（追加にしたい場合はこの行を削除）
 
       for (const file of accepted) {
         const url = URL.createObjectURL(file);
@@ -181,16 +207,14 @@
       renderList();
       updateTotalTime();
 
-      // ファイル名表示（例: 3件選択 / 1件ならその名前）
+      // ファイル名表示
       fileNameLabel.textContent = accepted.length === 1 ? accepted[0].name : `${accepted.length}件選択`;
     }
 
-    // ファイル選択（カスタムボタン）
+    // ファイル選択
     fileInput.addEventListener('change', (e) => {
       const f = e.target.files;
-      if (!f || !f.length) {
-        fileNameLabel.textContent = '選択されていません';
-      }
+      if (!f || !f.length) fileNameLabel.textContent = '選択されていません';
       handleFiles(f);
     });
 
@@ -256,18 +280,23 @@
       }
     }
 
-    /* モーダル */
+    /* モーダル（中央表示） */
     function openTimeModal(index) {
       modalTargetIndex = index;
       modalError.textContent = '';
       timeInput.value = formatTime(filesData[index].startMs, showMsCheckbox.checked);
-      modalBackdrop.style.display = 'flex';
+
+      modalBackdrop.classList.add('open');
       modalBackdrop.setAttribute('aria-hidden', 'false');
-      timeInput.focus(); timeInput.select();
+      document.body.classList.add('modal-open');
+
+      timeInput.focus();
+      timeInput.select();
     }
     function closeTimeModal() {
-      modalBackdrop.style.display = 'none';
+      modalBackdrop.classList.remove('open');
       modalBackdrop.setAttribute('aria-hidden', 'true');
+      document.body.classList.remove('modal-open');
       modalTargetIndex = null;
     }
     function commitTimeModal() {
