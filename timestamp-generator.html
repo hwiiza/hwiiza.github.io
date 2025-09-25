@@ -4,31 +4,78 @@
   <meta charset="UTF-8" />
   <title>音声ファイル タイムスタンプジェネレータ</title>
   <style>
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
-    ul { list-style: none; padding: 0; margin: 0; }
-    li {
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; }
+    main { padding: 16px 24px; }
+
+    /* ===== スリムなトップ更新バナー（常時表示／クローズ無し） ===== */
+    .top-banner{
+      /* position: sticky; top: 0; z-index: 1000;  追尾しないよう無効化 */
+      position: static; /* スクロールで追尾しない */
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+      padding: 4px 10px; font-size: 12px; line-height: 1.2;
+      background: #fef3c7; color: #7c2d12; border-bottom: 1px solid #f59e0b;
+    }
+    .top-banner .spacer{ flex: 1; }
+    .top-banner .btn-link{
+      background: transparent; border: 1px solid #f59e0b; color: #7c2d12;
+      border-radius: 4px; padding: 3px 8px; cursor: pointer; font-size: 12px;
+    }
+    .top-banner .btn-link:hover{ background: #fde68a; }
+
+    /* ===== コントロール類 ===== */
+    .controls { display: grid; row-gap: 10px; margin-bottom: 10px; }
+    .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .group {
+      display: inline-flex; gap: 8px; align-items: center;
+      padding: 6px 8px; border: 1px solid #e5e7eb; border-radius: 8px;
+    }
+    button, .btn {
+      padding: 8px 12px; border-radius: 6px; border: 1px solid #d1d5db; background: #f9fafb; cursor: pointer;
+      display: inline-flex; align-items: center; justify-content: center; text-decoration: none;
+    }
+    button:hover, .btn:hover { background: #f3f4f6; }
+
+    /* ===== ファイル一覧（他のULと衝突しないようスコープ化） ===== */
+    #fileList { list-style: none; padding: 0; margin: 0; }
+    #fileList > li {
       display: flex; align-items: center; gap: 10px;
       margin: 4px 0; padding: 6px 8px;
       border: 1px solid #ccc; border-radius: 6px;
       cursor: grab; user-select: none;
     }
+    #fileList > li.summary { cursor: default; background: #f8fafc; border-style: dashed; }
     .num  { min-width: 2ch; text-align: right; }
     .ts   { font-family: monospace; min-width: 7ch; cursor: pointer; text-decoration: underline dotted; }
     .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .controls { display: grid; row-gap: 10px; margin-bottom: 10px; }
-    .row      { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-    .group    {
-      display: inline-flex; gap: 8px; align-items: center;
-      padding: 6px 8px; border: 1px solid #e5e7eb; border-radius: 8px;
+
+    /* 個別削除ボタン */
+    .del {
+      cursor: pointer; border: 1px solid #ef4444; background: #fee2e2; color: #b91c1c;
+      border-radius: 6px; padding: 4px 8px; font-size: 12px;
     }
-    button { padding: 8px 12px; border-radius: 6px; border: 1px solid #d1d5db; background: #f9fafb; cursor: pointer; }
-    button:hover { background: #f3f4f6; }
-    li.summary { cursor: default; background: #f8fafc; border-style: dashed; }
-    /* ===== モーダル ===== */
+    .del:hover { background: #fecaca; }
+
+    /* ドロップゾーン */
+    .list-dropzone {
+      border: 2px dashed #cbd5e1; border-radius: 10px; padding: 12px;
+      background: #f8fafc; min-height: 120px; margin-bottom: 8px; position: relative;
+    }
+    .list-dropzone.dragover { background: #eef2ff; border-color: #6366f1; }
+    .empty-hint { color: #64748b; font-size: 14px; text-align: center; padding: 16px 8px; }
+    .empty-hint small { display: block; margin-top: 6px; color: #94a3b8; }
+
+    /* input隠し */
+    #fileInput { position: absolute; width: 0; height: 0; opacity: 0; pointer-events: none; }
+    #fileNameLabel { color: #6b7280; }
+
+    /* ===== 共通モーダル（時刻編集／詳細で使用） ===== */
     .modal-backdrop {
       position: fixed; inset: 0; background: rgba(0,0,0,.35);
       display: none; align-items: center; justify-content: center; z-index: 9999;
     }
+    .modal-backdrop.open { display: flex; }
+    body.modal-open { overflow: hidden; }
+
     .modal {
       background: #fff; border-radius: 10px; padding: 16px; width: min(420px, 92vw);
       box-shadow: 0 10px 30px rgba(0,0,0,.2);
@@ -44,39 +91,76 @@
     .btn-primary:hover { background: #1d4ed8; }
     .btn-ghost { background: #f9fafb; }
     .modal-error { color: #dc2626; font-size: 12px; min-height: 1.2em; }
+
+    /* ===== 詳細モーダルの見やすさ調整（幅＆箇条書き） ===== */
+    #bannerModalBackdrop .modal { width: min(560px, 92vw); }
+    #bannerModalBackdrop .modal .desc ul {
+      list-style: disc; padding-left: 1.25rem; margin: 8px 0;
+    }
+    #bannerModalBackdrop .modal .desc li {
+      display: list-item; margin: 6px 0; padding: 0; border: 0; border-radius: 0; cursor: auto; gap: 0;
+    }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
 </head>
 <body>
-  <h2>音声ファイル タイムスタンプジェネレータ</h2>
 
-  <div class="controls">
-    <div class="row">
-      <input type="file" id="fileInput" accept=".mp3,.wav" multiple />
-      <span class="group" role="group" aria-label="コピー内容">
-        <strong>コピー内容</strong>
-        <label><input type="radio" name="copyMode" value="all" checked /> 全て</label>
-        <label><input type="radio" name="copyMode" value="time" /> 時間だけ</label>
-        <label><input type="radio" name="copyMode" value="name" /> 曲名だけ</label>
-      </span>
-      <button id="copyTs">タイムスタンプをコピー</button>
-    </div>
-    <div class="row">
-      <span class="group" role="group" aria-label="連番付与">
-        <strong>連番付与</strong>
-        <label><input type="radio" name="numbering" value="none" checked /> 無し</label>
-        <label><input type="radio" name="numbering" value="head" /> 先頭につける</label>
-        <label><input type="radio" name="numbering" value="beforeName" /> 曲名の前につける</label>
-      </span>
-      <label class="group"><input type="checkbox" id="showMs" /> ミリ秒を表示</label>
-      <label class="group"><input type="checkbox" id="showRepeat" /> Repeat表示</label>
-    </div>
+  <!-- スリム更新バナー -->
+  <div id="topBanner" class="top-banner" role="region" aria-label="更新情報">
+    <span><strong>更新内容（2025-09-25）:　</strong>個別削除・全てクリア・追加入力機能を追加しました。</span>
+    <span class="spacer"></span>
+    <button id="bannerDetail" class="btn-link" type="button" aria-haspopup="dialog">詳細</button>
   </div>
 
-  <ul id="fileList"></ul>
-  <p id="totalDuration">合計再生時間: 00:00</p>
+  <main>
+    <h2>音声ファイル タイムスタンプジェネレータ</h2>
 
-  <!-- ===== モーダル ===== -->
+    <div class="controls">
+      <!-- 1行目：ファイル選択 -->
+      <div class="row">
+        <input type="file" id="fileInput" accept=".mp3,.wav" multiple />
+        <label for="fileInput" class="btn" id="fileSelectBtn">ファイル選択</label>
+        <span id="fileNameLabel">選択されていません</span>
+        <button id="clearAllBtn">全てクリア</button>
+      </div>
+      
+      <!-- 2行目：コピー内容 -->
+      <div class="row">
+        <span class="group" role="group" aria-label="コピー内容">
+          <strong>コピー内容</strong>
+          <label><input type="radio" name="copyMode" value="all" checked /> 全て</label>
+          <label><input type="radio" name="copyMode" value="time" /> 時間だけ</label>
+          <label><input type="radio" name="copyMode" value="name" /> 曲名だけ</label>
+        </span>
+        <button id="copyTs">タイムスタンプをコピー</button>
+      </div>
+
+      <!-- 3行目：連番やオプション -->
+      <div class="row">
+        <span class="group" role="group" aria-label="連番付与">
+          <strong>連番付与</strong>
+          <label><input type="radio" name="numbering" value="none" checked /> 無し</label>
+          <label><input type="radio" name="numbering" value="head" /> 先頭につける</label>
+          <label><input type="radio" name="numbering" value="beforeName" /> 曲名の前につける</label>
+        </span>
+        <label class="group"><input type="checkbox" id="showMs" /> ミリ秒を表示</label>
+        <label class="group"><input type="checkbox" id="showRepeat" /> Repeat表示</label>
+      </div>
+    </div>
+
+    <!-- 曲一覧（ドロップ対応） -->
+    <div id="listDropzone" class="list-dropzone" aria-label="曲一覧（ドラッグ＆ドロップ対応）">
+      <ul id="fileList"></ul>
+      <div id="emptyHint" class="empty-hint">
+        ここに .mp3 / .wav をドラッグ＆ドロップ<br>
+        <small>または上の「ファイル選択」から読み込み</small>
+      </div>
+    </div>
+
+    <p id="totalDuration">合計再生時間: 00:00</p>
+  </main>
+
+  <!-- 時刻編集モーダル -->
   <div id="modalBackdrop" class="modal-backdrop" aria-hidden="true">
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
       <h3 id="modalTitle">開始時刻を編集</h3>
@@ -93,8 +177,53 @@
     </div>
   </div>
 
+  <!-- 更新内容（詳細）モーダル -->
+  <div id="bannerModalBackdrop" class="modal-backdrop" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="bannerModalTitle">
+      <h3 id="bannerModalTitle">更新内容（2025-09-25）</h3>
+      <div class="desc">
+        <ul>
+          <li>各行末尾の「削除」で<strong>個別削除</strong>を可能にしました</li>
+          <li>「<strong>全てクリア</strong>」ボタンを追加しました</li>
+          <li>音声ファイルの<strong>追加入力</strong>（選択 / D&amp;D の複数回）に対応しました</li>
+        </ul>
+      </div>
+      <div class="actions" style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px;">
+        <button id="bannerModalClose" class="btn-primary">OK</button>
+      </div>
+    </div>
+  </div>
+
   <script>
+    /* ===== 更新バナー：詳細モーダルのみ表示 ===== */
+    const bannerDetail = document.getElementById('bannerDetail');
+    const bannerModalBackdrop = document.getElementById('bannerModalBackdrop');
+    const bannerModalClose = document.getElementById('bannerModalClose');
+
+    bannerDetail.addEventListener('click', () => {
+      bannerModalBackdrop.classList.add('open');
+      bannerModalBackdrop.setAttribute('aria-hidden', 'false');
+      document.body.classList.add('modal-open');
+    });
+    bannerModalClose.addEventListener('click', () => {
+      bannerModalBackdrop.classList.remove('open');
+      bannerModalBackdrop.setAttribute('aria-hidden', 'true');
+      document.body.classList.remove('modal-open');
+    });
+    bannerModalBackdrop.addEventListener('click', (e) => {
+      if (e.target === bannerModalBackdrop) bannerModalClose.click();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (bannerModalBackdrop.classList.contains('open') && e.key === 'Escape') bannerModalClose.click();
+    });
+
+    /* ===== 本体処理 ===== */
     const fileInput = document.getElementById('fileInput');
+    const fileNameLabel = document.getElementById('fileNameLabel');
+    const clearAllBtn = document.getElementById('clearAllBtn');
+
+    const listDropzone = document.getElementById('listDropzone');
+    const emptyHint = document.getElementById('emptyHint');
     const fileListEl = document.getElementById('fileList');
     const totalDurationEl = document.getElementById('totalDuration');
     const showMsCheckbox = document.getElementById('showMs');
@@ -103,7 +232,7 @@
     const numberingRadios = document.querySelectorAll('input[name="numbering"]');
     const copyModeRadios = document.querySelectorAll('input[name="copyMode"]');
 
-    // モーダル要素
+    // 時刻編集モーダル要素
     const modalBackdrop = document.getElementById('modalBackdrop');
     const timeInput = document.getElementById('timeInput');
     const modalError = document.getElementById('modalError');
@@ -114,10 +243,10 @@
     let idSeq = 1;
     let modalTargetIndex = null;
 
-    // 並べ替え
+    // 並べ替え（削除ボタン・サマリはドラッグ無効）
     new Sortable(fileListEl, {
       animation: 150,
-      filter: '.summary',
+      filter: '.summary, .del',
       onMove: (evt) => !evt.related.classList?.contains('summary'),
       onEnd: () => {
         const idToItem = new Map(filesData.map(d => [String(d.id), d]));
@@ -133,25 +262,89 @@
       }
     });
 
-    fileInput.addEventListener('change', async (e) => {
-      const files = Array.from(e.target.files);
+    // 追加読み込み（選択/D&D の複数回追加OK）
+    async function handleFiles(inputFiles) {
+      const files = Array.from(inputFiles);
       if (!files.length) return;
-      filesData = [];
-      for (const file of files) {
+
+      const accepted = files.filter(f => {
+        const isAudio = f.type.startsWith('audio/');
+        const byExt = /\.mp3$/i.test(f.name) || /\.wav$/i.test(f.name);
+        return isAudio || byExt;
+      });
+      if (!accepted.length) {
+        alert('対応しているファイルは .mp3 / .wav です');
+        return;
+      }
+
+      let currentStart = totalDurationMs();
+      let addedCount = 0;
+
+      for (const file of accepted) {
         const url = URL.createObjectURL(file);
         const audio = new Audio(url);
         await new Promise(res => audio.addEventListener('loadedmetadata', res, { once: true }));
         const durationMs = Math.round(audio.duration * 1000);
         const nameNoExt = file.name.replace(/\.[^/.]+$/, '');
-        filesData.push({ id: idSeq++, file, name: nameNoExt, durationMs, startMs: 0 });
+
+        filesData.push({ id: idSeq++, file, name: nameNoExt, durationMs, startMs: currentStart });
+        currentStart += durationMs;
+        addedCount++;
         URL.revokeObjectURL(url);
       }
-      recalcStartsFrom(0, 0);
+
+      renderList();
+      updateTotalTime();
+      if (addedCount > 0) fileNameLabel.textContent = `${addedCount}件追加（合計${filesData.length}件）`;
+    }
+
+    // ファイル選択
+    fileInput.addEventListener('change', (e) => {
+      const f = e.target.files;
+      if (!f || !f.length) {
+        if (!filesData.length) fileNameLabel.textContent = '選択されていません';
+        return;
+      }
+      handleFiles(f);
+      fileInput.value = ''; // 同じファイル選択でも change を発火
+    });
+
+    /* D&D 受付 */
+    ['dragover', 'drop'].forEach(type => {
+      window.addEventListener(type, (e) => e.preventDefault(), { passive: false });
+    });
+    ['dragenter', 'dragover'].forEach(type => {
+      listDropzone.addEventListener(type, (e) => {
+        e.preventDefault();
+        listDropzone.classList.add('dragover');
+      });
+    });
+    ;['dragleave', 'drop'].forEach(type => {
+      listDropzone.addEventListener(type, () => listDropzone.classList.remove('dragover'));
+    });
+    listDropzone.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      const dt = e.dataTransfer;
+      const files = dt.items && dt.items.length
+        ? Array.from(dt.items).filter(it => it.kind === 'file').map(it => it.getAsFile()).filter(Boolean)
+        : Array.from(dt.files);
+      await handleFiles(files);
+    });
+
+    // 全てクリア
+    clearAllBtn.addEventListener('click', () => {
+      if (!filesData.length) { alert('クリアする項目がありません'); return; }
+      if (!confirm('一覧を全てクリアしますか？')) return;
+
+      filesData = [];
+      idSeq = 1;
+      fileNameLabel.textContent = '選択されていません';
+      fileInput.value = '';
       renderList();
       updateTotalTime();
     });
 
-    /* ===== 計算関数 ===== */
+    /* ===== 計算系 ===== */
     function recalcStartsFrom(idx, newStartMs) {
       if (!filesData.length) return;
       idx = Math.max(0, Math.min(idx, filesData.length - 1));
@@ -160,7 +353,6 @@
         filesData[i].startMs = filesData[i - 1].startMs + filesData[i - 1].durationMs;
       }
     }
-
     function getNumberingMode() {
       const checked = [...numberingRadios].find(r => r.checked);
       return checked ? checked.value : 'none';
@@ -169,7 +361,6 @@
       const checked = [...copyModeRadios].find(r => r.checked);
       return checked ? checked.value : 'all';
     }
-
     function totalDurationMs() {
       return filesData.reduce((s, d) => s + d.durationMs, 0);
     }
@@ -193,19 +384,23 @@
       }
     }
 
-    /* ===== モーダル ===== */
+    /* ===== 時刻編集モーダル ===== */
     function openTimeModal(index) {
       modalTargetIndex = index;
       modalError.textContent = '';
       timeInput.value = formatTime(filesData[index].startMs, showMsCheckbox.checked);
-      modalBackdrop.style.display = 'flex';
+
+      modalBackdrop.classList.add('open');
       modalBackdrop.setAttribute('aria-hidden', 'false');
+      document.body.classList.add('modal-open');
+
       timeInput.focus();
       timeInput.select();
     }
     function closeTimeModal() {
-      modalBackdrop.style.display = 'none';
+      modalBackdrop.classList.remove('open');
       modalBackdrop.setAttribute('aria-hidden', 'true');
+      document.body.classList.remove('modal-open');
       modalTargetIndex = null;
     }
     function commitTimeModal() {
@@ -224,11 +419,9 @@
     }
     btnOk.addEventListener('click', commitTimeModal);
     btnCancel.addEventListener('click', closeTimeModal);
-    modalBackdrop.addEventListener('click', (e) => {
-      if (e.target === modalBackdrop) closeTimeModal();
-    });
+    modalBackdrop.addEventListener('click', (e) => { if (e.target === modalBackdrop) closeTimeModal(); });
     document.addEventListener('keydown', (e) => {
-      if (modalBackdrop.getAttribute('aria-hidden') === 'false') {
+      if (modalBackdrop.classList.contains('open')) {
         if (e.key === 'Escape') closeTimeModal();
         if (e.key === 'Enter')  commitTimeModal();
       }
@@ -245,7 +438,7 @@
       if (parts.length === 2) [mm, ss] = parts.map(Number);
       else if (parts.length === 3) [hh, mm, ss] = parts.map(Number);
       else return null;
-      if ((parts.length === 2 && (mm >= 60 || ss >= 60)) || (parts.length === 3 && (mm >= 60 || ss >= 60))) return null;
+      if ((mm >= 60 || ss >= 60)) return null;
       let msec = 0;
       if (hasMs) {
         if (!/^\d{1,3}$/.test(msPart)) return null;
@@ -263,6 +456,11 @@
       const numSpan  = document.createElement('span'); numSpan.className  = 'num';
       const tsSpan   = document.createElement('span'); tsSpan.className   = 'ts';
       const nameSpan = document.createElement('span'); nameSpan.className = 'name';
+      const delBtn   = document.createElement('button'); delBtn.className = 'del';
+      delBtn.textContent = '削除';
+      delBtn.type = 'button';
+      delBtn.title = 'この曲を削除';
+      delBtn.setAttribute('aria-label', `「${item.name}」を削除`);
 
       tsSpan.textContent = formatTime(item.startMs, showMsCheckbox.checked);
       nameSpan.textContent = item.name;
@@ -270,15 +468,30 @@
 
       if (mode === 'head') {
         numSpan.textContent = idx + 1;
-        li.append(numSpan, tsSpan, nameSpan);
+        li.append(numSpan, tsSpan, nameSpan, delBtn);
       } else if (mode === 'beforeName') {
         numSpan.textContent = idx + 1;
-        li.append(tsSpan, numSpan, nameSpan);
+        li.append(tsSpan, numSpan, nameSpan, delBtn);
       } else {
-        li.append(tsSpan, nameSpan);
+        li.append(tsSpan, nameSpan, delBtn);
       }
 
       tsSpan.addEventListener('dblclick', (e) => { e.preventDefault(); openTimeModal(idx); });
+
+      // 個別削除
+      delBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const targetId = item.id;
+        const i = filesData.findIndex(d => d.id === targetId);
+        if (i >= 0) {
+          filesData.splice(i, 1);
+          if (filesData.length) recalcStartsFrom(0, 0);
+          renderList();
+          updateTotalTime();
+          fileNameLabel.textContent = filesData.length ? `合計${filesData.length}件` : '選択されていません';
+        }
+      });
+
       return li;
     }
 
@@ -286,7 +499,6 @@
       fileListEl.innerHTML = '';
       filesData.forEach((item, idx) => fileListEl.appendChild(renderRow(item, idx)));
 
-      // Repeat の連番表示も連番設定に追従
       if (showRepeatCheckbox.checked) {
         const li = document.createElement('li'); li.className = 'summary';
         const mode = getNumberingMode();
@@ -309,19 +521,21 @@
         }
         fileListEl.appendChild(li);
       }
+
+      emptyHint.style.display = filesData.length ? 'none' : 'block';
     }
 
     function updateTotalTime() {
       totalDurationEl.textContent = '合計再生時間: ' + formatTime(totalDurationMs(), showMsCheckbox.checked);
     }
 
-    /* ===== 設定変更（←ここが復活ポイント） ===== */
+    /* 設定変更 */
     showMsCheckbox.addEventListener('change', () => { renderList(); updateTotalTime(); });
     showRepeatCheckbox.addEventListener('change', () => { renderList(); updateTotalTime(); });
     numberingRadios.forEach(r => r.addEventListener('change', () => { renderList(); updateTotalTime(); }));
-    copyModeRadios.forEach(r => r.addEventListener('change', () => { /* UIのみ */ }));
+    copyModeRadios.forEach(r => r.addEventListener('change', () => {}));
 
-    /* ===== コピー ===== */
+    /* コピー */
     copyBtn.addEventListener('click', async () => {
       if (!filesData.length) { alert('コピーするデータがありません'); return; }
       const withMs = showMsCheckbox.checked;
@@ -345,16 +559,18 @@
         if (showRepeatCheckbox.checked) {
           const ts = formatTime(totalDurationMs(), withMs);
           const n = filesData.length + 1;
-          if (numberingMode === 'head')        lines.push(`${n} ${ts} Repeat`);
-          else if (numberingMode === 'beforeName') lines.push(`${ts} ${n} Repeat`);
-          else                                  lines.push(`${ts} Repeat`);
+          if (numberingMode === 'head')             lines.push(`${n} ${ts} Repeat`);
+          else if (numberingMode === 'beforeName')  lines.push(`${ts} ${n} Repeat`);
+          else                                      lines.push(`${ts} Repeat`);
         }
       }
 
       await navigator.clipboard.writeText(lines.join('\n'));
       alert('コピーしました！');
     });
+
+    // 初期表示
+    renderList();
   </script>
 </body>
 </html>
-
