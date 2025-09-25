@@ -177,7 +177,7 @@
       }
     });
 
-    /* ファイル取り込み共通 */
+    // ===== ここを「追加モード」に変更 =====
     async function handleFiles(inputFiles) {
       const files = Array.from(inputFiles);
       if (!files.length) return;
@@ -192,30 +192,44 @@
         return;
       }
 
-      filesData = []; // 置き換え（追加にしたい場合はこの行を削除）
+      // 追加開始位置（すでにある合計時間＝末尾 start）
+      let currentStart = totalDurationMs();
 
+      let addedCount = 0;
       for (const file of accepted) {
         const url = URL.createObjectURL(file);
         const audio = new Audio(url);
         await new Promise(res => audio.addEventListener('loadedmetadata', res, { once: true }));
         const durationMs = Math.round(audio.duration * 1000);
         const nameNoExt = file.name.replace(/\.[^/.]+$/, '');
-        filesData.push({ id: idSeq++, file, name: nameNoExt, durationMs, startMs: 0 });
+
+        // 末尾へ追加（開始時刻は currentStart）
+        filesData.push({ id: idSeq++, file, name: nameNoExt, durationMs, startMs: currentStart });
+        currentStart += durationMs;
+        addedCount++;
+
         URL.revokeObjectURL(url);
       }
-      recalcStartsFrom(0, 0);
+
       renderList();
       updateTotalTime();
 
-      // ファイル名表示
-      fileNameLabel.textContent = accepted.length === 1 ? accepted[0].name : `${accepted.length}件選択`;
+      // ファイル名ラベル更新
+      if (addedCount > 0) {
+        fileNameLabel.textContent = `${addedCount}件追加（合計${filesData.length}件）`;
+      }
     }
 
     // ファイル選択
     fileInput.addEventListener('change', (e) => {
       const f = e.target.files;
-      if (!f || !f.length) fileNameLabel.textContent = '選択されていません';
+      if (!f || !f.length) {
+        if (!filesData.length) fileNameLabel.textContent = '選択されていません';
+        return;
+      }
       handleFiles(f);
+      // 選択状態はリセットしておくと同じファイルを続けて選んでもchangeが発火しやすい
+      fileInput.value = '';
     });
 
     /* D&D（曲一覧で受け付け） */
@@ -435,9 +449,9 @@
         if (showRepeatCheckbox.checked) {
           const ts = formatTime(totalDurationMs(), withMs);
           const n = filesData.length + 1;
-          if (numberingMode === 'head')        lines.push(`${n} ${ts} Repeat`);
-          else if (numberingMode === 'beforeName') lines.push(`${ts} ${n} Repeat`);
-          else                                  lines.push(`${ts} Repeat`);
+          if (numberingMode === 'head')             lines.push(`${n} ${ts} Repeat`);
+          else if (numberingMode === 'beforeName')  lines.push(`${ts} ${n} Repeat`);
+          else                                      lines.push(`${ts} Repeat`);
         }
       }
 
