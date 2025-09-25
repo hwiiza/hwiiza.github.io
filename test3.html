@@ -74,14 +74,18 @@
   <h2>音声ファイル タイムスタンプジェネレータ</h2>
 
   <div class="controls">
-    <!-- 1行目：ファイル選択 選択されていません -->
+    <!-- 1行目：ファイル選択 -->
     <div class="row">
       <input type="file" id="fileInput" accept=".mp3,.wav" multiple />
       <label for="fileInput" class="btn" id="fileSelectBtn">ファイル選択</label>
       <span id="fileNameLabel">選択されていません</span>
     </div>
+    <!-- 1.5行目：全てクリア -->
+    <div class="row">
+      <button id="clearAllBtn">全てクリア</button>
+    </div>
 
-    <!-- 2行目：コピー内容 全て 時間だけ 曲名だけ -->
+    <!-- 2行目：コピー内容 -->
     <div class="row">
       <span class="group" role="group" aria-label="コピー内容">
         <strong>コピー内容</strong>
@@ -136,6 +140,7 @@
   <script>
     const fileInput = document.getElementById('fileInput');
     const fileNameLabel = document.getElementById('fileNameLabel');
+    const clearAllBtn = document.getElementById('clearAllBtn');
 
     const listDropzone = document.getElementById('listDropzone');
     const emptyHint = document.getElementById('emptyHint');
@@ -177,7 +182,7 @@
       }
     });
 
-    // ===== ここを「追加モード」に変更 =====
+    // ===== 追加読み込み対応の取り込み処理 =====
     async function handleFiles(inputFiles) {
       const files = Array.from(inputFiles);
       if (!files.length) return;
@@ -192,7 +197,7 @@
         return;
       }
 
-      // 追加開始位置（すでにある合計時間＝末尾 start）
+      // 追加開始位置（現在の合計時間から）
       let currentStart = totalDurationMs();
 
       let addedCount = 0;
@@ -203,7 +208,6 @@
         const durationMs = Math.round(audio.duration * 1000);
         const nameNoExt = file.name.replace(/\.[^/.]+$/, '');
 
-        // 末尾へ追加（開始時刻は currentStart）
         filesData.push({ id: idSeq++, file, name: nameNoExt, durationMs, startMs: currentStart });
         currentStart += durationMs;
         addedCount++;
@@ -214,7 +218,6 @@
       renderList();
       updateTotalTime();
 
-      // ファイル名ラベル更新
       if (addedCount > 0) {
         fileNameLabel.textContent = `${addedCount}件追加（合計${filesData.length}件）`;
       }
@@ -228,7 +231,7 @@
         return;
       }
       handleFiles(f);
-      // 選択状態はリセットしておくと同じファイルを続けて選んでもchangeが発火しやすい
+      // 同じファイルを連続で選んでも change 発火しやすいようリセット
       fileInput.value = '';
     });
 
@@ -252,6 +255,23 @@
         ? Array.from(dt.items).filter(it => it.kind === 'file').map(it => it.getAsFile()).filter(Boolean)
         : Array.from(dt.files);
       await handleFiles(files);
+    });
+
+    // 全てクリア
+    clearAllBtn.addEventListener('click', () => {
+      if (!filesData.length) {
+        alert('クリアする項目がありません');
+        return;
+      }
+      if (!confirm('一覧を全てクリアしますか？')) return;
+
+      filesData = [];
+      idSeq = 1;
+      fileNameLabel.textContent = '選択されていません';
+      fileInput.value = '';
+
+      renderList();
+      updateTotalTime();
     });
 
     /* 計算関数 */
