@@ -7,6 +7,8 @@
 // @match        https://www.suno.com/*
 // @run-at       document-end
 // @grant        none
+// @updateURL    https://github.com/hwiiza/hwiiza.github.io/raw/refs/heads/main/SunoWorkspaceDurationSum.user.js
+// @downloadURL  https://github.com/hwiiza/hwiiza.github.io/raw/refs/heads/main/SunoWorkspaceDurationSum.user.js
 // ==/UserScript==
 
 (function () {
