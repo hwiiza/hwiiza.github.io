@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Suno Workspace Duration Sum
 // @namespace    https://hwiiza.example
-// @version      1.6
+// @version      1.7
 // @description  Workspace 全曲の再生時間をスクロールで集計。右上のバッジを常時表示＆ドラッグ移動＆位置記憶。シングルクリックで集計実行。
 // @match        https://suno.com/*
 // @match        https://www.suno.com/*
@@ -261,7 +261,7 @@
         padding: "6px 12px",
         borderRadius: "999px",
         fontSize: "12px",
-        background: "rgba(245,130,32,0.75)",
+        background: "rgba(246,130,32,0.75)",
         color: "white",
         whiteSpace: "nowrap",
         pointerEvents: "auto",
