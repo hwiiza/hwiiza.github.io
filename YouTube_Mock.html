@@ -1,0 +1,910 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MockTube - Thumbnail Preview</title>
+
+  <style>
+    :root{
+      --bg:#0f0f0f;
+      --text:#f1f1f1;
+      --muted:#aaa;
+      --muted2:#777;
+      --surface:#181818;
+      --chip:#272727;
+      --border:#2a2a2a;
+
+      --topbar-h:56px;
+      --sidebar-w:240px;
+
+      --content-max: 1760px;
+      --content-pad: 24px;
+      --grid-gap: 16px;
+
+      --thumb-radius: 14px;
+      --avatar: 36px;
+      --shadow: 0 1px 2px rgba(0,0,0,.35), 0 8px 28px rgba(0,0,0,.35);
+
+      --cols: 4;
+
+      --phone-w: 390px;
+      --phone-h: 844px;
+      --phone-radius: 26px;
+    }
+
+    [data-theme="light"]{
+      --bg:#ffffff;
+      --text:#0f0f0f;
+      --muted:#606060;
+      --muted2:#808080;
+      --surface:#f7f7f7;
+      --chip:#efefef;
+      --border:#e6e6e6;
+      --shadow: 0 1px 2px rgba(0,0,0,.08), 0 10px 26px rgba(0,0,0,.08);
+    }
+
+    *{ box-sizing:border-box; }
+    body{
+      margin:0;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans JP", sans-serif;
+      background:var(--bg);
+      color:var(--text);
+    }
+    button, input, select{ font:inherit; }
+
+    /* ===== Stage / phone preview ===== */
+    .stage{ min-height:100vh; }
+    .phone-frame{ display:none; }
+
+    body[data-preview="phone"] .stage{
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      padding:18px 10px 30px;
+      gap:10px;
+      background: radial-gradient(1200px 600px at 50% 0%, color-mix(in oklab, var(--chip) 40%, transparent), transparent 70%);
+    }
+    body[data-preview="phone"] .phone-frame{
+      display:block;
+      width: var(--phone-w);
+      height: var(--phone-h);
+      border-radius: var(--phone-radius);
+      border: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
+      box-shadow: 0 30px 90px rgba(0,0,0,.55);
+      overflow:hidden;
+      background: var(--bg);
+      position:relative;
+    }
+    .phone-mount{
+      width:100%;
+      height:100%;
+      overflow:auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    body[data-preview="phone"] .phone-frame::before{
+      content:"";
+      position:absolute;
+      top:8px;
+      left:50%;
+      transform:translateX(-50%);
+      width:120px;
+      height:22px;
+      border-radius:999px;
+      background: rgba(0,0,0,.35);
+      z-index:200;
+      pointer-events:none;
+    }
+
+    /* ===== External control bar (only in phone preview) ===== */
+    .phone-controls{
+      display:none;
+      width: min(980px, 100%);
+      align-items:center;
+      justify-content:center;
+      gap:10px;
+      flex-wrap:wrap;
+    }
+    body[data-preview="phone"] .phone-controls{
+      display:flex;
+    }
+    .phone-controls .pillbtn{
+      height:40px;
+      border-radius:999px;
+    }
+    .hint{
+      color:var(--muted);
+      font-size:12px;
+      margin-left:4px;
+    }
+
+    /* ===== Topbar ===== */
+    .topbar{
+      position:sticky; top:0; z-index:50;
+      height:var(--topbar-h);
+      background:var(--bg);
+      border-bottom:1px solid var(--border);
+    }
+    .topbar-inner{
+      height:100%;
+      display:flex;
+      align-items:center;
+      gap:12px;
+      padding:0 16px;
+      min-width:0;
+    }
+    .tb-left{ display:flex; align-items:center; gap:10px; min-width:240px; }
+    .tb-mid{ flex:1; display:flex; align-items:center; justify-content:center; min-width:0; }
+    .tb-right{ display:flex; align-items:center; gap:10px; min-width:240px; justify-content:flex-end; }
+
+    .iconbtn{
+      width:40px; height:40px;
+      border-radius:999px;
+      border:0;
+      background:transparent;
+      color:var(--text);
+      display:grid;
+      place-items:center;
+      cursor:default;
+    }
+    .logo{
+      display:flex; align-items:center; gap:8px;
+      font-weight:800; letter-spacing:.2px; user-select:none;
+      white-space:nowrap;
+    }
+    .logo-badge{
+      width:28px; height:20px;
+      border-radius:6px;
+      background:#ff0033;
+      position:relative;
+      box-shadow:var(--shadow);
+    }
+    .logo-badge::after{
+      content:"";
+      position:absolute;
+      left:11px; top:6px;
+      border-left:7px solid #fff;
+      border-top:4px solid transparent;
+      border-bottom:4px solid transparent;
+    }
+    .logo small{
+      font-weight:700;
+      color:var(--muted);
+      font-size:12px;
+      margin-left:6px;
+    }
+
+    .search{
+      width:min(720px, 100%);
+      display:flex;
+      align-items:center;
+      gap:10px;
+      min-width:0;
+    }
+    .searchbox{
+      flex:1;
+      height:40px;
+      border-radius:20px;
+      border:1px solid var(--border);
+      background:transparent;
+      color:var(--text);
+      padding:0 14px;
+      outline:none;
+      min-width:0;
+    }
+    .searchbtn{
+      height:40px;
+      padding:0 14px;
+      border-radius:20px;
+      border:1px solid var(--border);
+      background:color-mix(in oklab, var(--chip) 75%, transparent);
+      color:var(--text);
+      cursor:pointer;
+    }
+
+    .pillbtn{
+      height:36px;
+      padding:0 12px;
+      border-radius:18px;
+      border:1px solid var(--border);
+      background:var(--chip);
+      color:var(--text);
+      cursor:pointer;
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      user-select:none;
+      white-space:nowrap;
+    }
+    .pillbtn:hover{ filter:brightness(1.05); }
+
+    /* ===== Layout ===== */
+    .app{
+      display:grid;
+      grid-template-columns: var(--sidebar-w) 1fr;
+      min-height: calc(100vh - var(--topbar-h));
+    }
+    .sidebar{
+      position:sticky;
+      top:var(--topbar-h);
+      height: calc(100vh - var(--topbar-h));
+      overflow:auto;
+      border-right:1px solid var(--border);
+      padding:12px 8px;
+    }
+    .navgrp{ margin:6px 0 14px; }
+    .navitem{
+      display:flex; align-items:center; gap:12px;
+      padding:10px 12px;
+      border-radius:12px;
+      user-select:none;
+    }
+    .navitem.active{
+      background:color-mix(in oklab, var(--chip) 90%, transparent);
+      font-weight:700;
+    }
+    .navicon{ width:22px; display:grid; place-items:center; color:var(--muted); }
+    .navlabel{ font-size:14px; }
+    .divider{ height:1px; background:var(--border); margin:10px 8px; }
+
+    .main{ min-width:0; }
+    .container{
+      max-width: var(--content-max);
+      margin: 0 auto;
+      padding: 14px var(--content-pad) 40px;
+    }
+
+    .chips{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      margin: 6px 0 14px;
+      position:sticky;
+      top:var(--topbar-h);
+      z-index:20;
+      padding: 10px 0;
+      background: linear-gradient(to bottom, var(--bg) 70%, color-mix(in oklab, var(--bg) 85%, transparent));
+      border-bottom: 1px solid color-mix(in oklab, var(--border) 60%, transparent);
+      backdrop-filter: blur(6px);
+    }
+    .chip{
+      padding:8px 12px;
+      border-radius:999px;
+      background: var(--chip);
+      border:1px solid var(--border);
+      font-size:13px;
+      cursor:pointer;
+      user-select:none;
+    }
+    .chip.active{ background:var(--text); color:var(--bg); border-color:transparent; }
+
+    .drop{
+      border:1px dashed color-mix(in oklab, var(--border) 85%, transparent);
+      border-radius:16px;
+      padding:14px;
+      background: color-mix(in oklab, var(--surface) 70%, transparent);
+      margin: 6px 0 16px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+    }
+    .drop strong{ font-size:14px; }
+    .drop p{
+      margin:6px 0 0;
+      color:var(--muted);
+      font-size:12px;
+      line-height:1.5;
+    }
+    .drop-actions{ display:flex; gap:8px; flex-wrap:wrap; }
+
+    .grid{
+      display:grid;
+      grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
+      gap: var(--grid-gap);
+    }
+
+    .card{
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+      min-width:0;
+      cursor:grab;
+      user-select:none;
+    }
+    .card.dragging{ opacity:.55; cursor:grabbing; }
+
+    .thumb{
+      position:relative;
+      width:100%;
+      aspect-ratio: 16 / 9;
+      border-radius: var(--thumb-radius);
+      overflow:hidden;
+      background:#000;
+      border:1px solid color-mix(in oklab, var(--border) 75%, transparent);
+      box-shadow: var(--shadow);
+    }
+    .thumb img{
+      width:100%;
+      height:100%;
+      object-fit:cover;
+      display:block;
+      pointer-events:none;
+      transform: scale(1);
+      transition: transform .18s ease;
+    }
+    .card:hover .thumb img{ transform: scale(1.02); }
+
+    .duration{
+      position:absolute;
+      right:8px;
+      bottom:8px;
+      background: rgba(0,0,0,.78);
+      color:#fff;
+      font-size:12px;
+      padding:3px 6px;
+      border-radius:6px;
+      line-height:1.2;
+    }
+
+    .delbtn{
+      position:absolute;
+      top:8px;
+      right:8px;
+      width:30px;
+      height:30px;
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,.18);
+      background: rgba(0,0,0,.45);
+      color:#fff;
+      cursor:pointer;
+      display:grid;
+      place-items:center;
+      opacity:0;
+      transition: opacity .12s ease, transform .12s ease;
+      transform: translateY(-2px);
+    }
+    .thumb:hover .delbtn{ opacity:1; transform: translateY(0); }
+    .delbtn:hover{ filter:brightness(1.12); }
+
+    .meta{
+      display:grid;
+      grid-template-columns: var(--avatar) 1fr;
+      gap:10px;
+      align-items:flex-start;
+      min-width:0;
+      pointer-events:none;
+    }
+    .avatar{
+      width:var(--avatar);
+      height:var(--avatar);
+      border-radius:50%;
+      background: linear-gradient(135deg, #777, #333);
+      border:1px solid color-mix(in oklab, var(--border) 70%, transparent);
+    }
+    .title{
+      margin:0;
+      font-size:14px;
+      font-weight:650;
+      line-height:1.35;
+      display:-webkit-box;
+      -webkit-line-clamp:2;
+      -webkit-box-orient:vertical;
+      overflow:hidden;
+    }
+    .sub{
+      margin-top:5px;
+      color:var(--muted);
+      font-size:12px;
+      line-height:1.35;
+    }
+    .sub .ch{ display:block; margin-bottom:2px; }
+    .sub .vd{ color:color-mix(in oklab, var(--muted) 80%, var(--muted2)); }
+
+    /* Desktop responsive columns */
+    @media (min-width: 1900px){
+      :root{ --cols: 5; --content-max: 1960px; }
+    }
+    @media (max-width: 1320px){
+      :root{ --cols: 3; --content-pad: 18px; }
+    }
+    @media (max-width: 980px){
+      :root{ --cols: 2; --content-pad: 14px; }
+    }
+    @media (max-width: 720px){
+      .app{ grid-template-columns: 1fr; }
+      .sidebar{ display:none; }
+      .tb-left, .tb-right{ min-width:auto; }
+      .tb-mid{ justify-content:flex-start; }
+      .search{ width:100%; }
+    }
+
+    /* Phone preview overrides (force mobile feel) */
+    body[data-preview="phone"]{
+      --cols: 1;
+      --grid-gap: 14px;
+      --content-pad: 12px;
+    }
+    body[data-preview="phone"] .app{ grid-template-columns: 1fr !important; min-height:auto; }
+    body[data-preview="phone"] .sidebar{ display:none !important; }
+    body[data-preview="phone"] .container{ max-width:100% !important; padding: 10px 12px 30px !important; }
+
+    /* IMPORTANT: hide right buttons INSIDE the phone frame topbar */
+    body[data-preview="phone"] .tb-right{
+      display:none !important;
+    }
+    /* tighten left width to avoid wasting */
+    body[data-preview="phone"] .tb-left{ min-width:auto !important; }
+    body[data-preview="phone"] .tb-mid{ justify-content:flex-start !important; }
+    body[data-preview="phone"] .search{ width:100% !important; }
+    body[data-preview="phone"] .chip{ padding:7px 10px; font-size:12px; }
+  </style>
+</head>
+
+<body data-theme="dark" data-preview="desktop">
+  <div class="stage" id="stage">
+    <!-- External controls for phone preview -->
+    <div class="phone-controls" id="phoneControls">
+      <button class="pillbtn" id="addBtnOuter">＋ 画像を追加</button>
+      <button class="pillbtn" id="previewBtnOuter">🖥 Desktop</button>
+      <button class="pillbtn" id="themeBtnOuter">🌙 Dark</button>
+      <span class="hint">※スマホ枠は見た目専用。操作はここで。</span>
+    </div>
+
+    <!-- Phone frame -->
+    <div class="phone-frame" id="phoneFrame">
+      <div class="phone-mount" id="phoneMount"></div>
+    </div>
+
+    <!-- Desktop mount -->
+    <div id="desktopMount"></div>
+
+    <!-- The app shell (moved between mounts) -->
+    <div id="appShell">
+      <header class="topbar">
+        <div class="topbar-inner">
+          <div class="tb-left">
+            <button class="iconbtn" id="menuBtn" title="menu">≡</button>
+            <div class="logo">
+              <span class="logo-badge"></span>
+              <span>MockTube</span>
+              <small>Preview</small>
+            </div>
+          </div>
+
+          <div class="tb-mid">
+            <div class="search">
+              <input class="searchbox" placeholder="検索（見た目だけ）" />
+              <button class="searchbtn" title="search">🔍</button>
+              <button class="iconbtn" title="mic">🎙️</button>
+            </div>
+          </div>
+
+          <!-- Desktop-only controls (hidden in phone preview by CSS) -->
+          <div class="tb-right">
+            <button class="pillbtn" id="addBtn">＋ 画像を追加</button>
+            <button class="pillbtn" id="previewBtn">📱 Phone</button>
+            <button class="pillbtn" id="themeBtn">🌙 Dark</button>
+          </div>
+        </div>
+      </header>
+
+      <div class="app">
+        <aside class="sidebar">
+          <div class="navgrp">
+            <div class="navitem active"><div class="navicon">🏠</div><div class="navlabel">ホーム</div></div>
+            <div class="navitem"><div class="navicon">▶️</div><div class="navlabel">ショート</div></div>
+            <div class="navitem"><div class="navicon">📺</div><div class="navlabel">登録チャンネル</div></div>
+          </div>
+          <div class="divider"></div>
+          <div class="navgrp">
+            <div class="navitem"><div class="navicon">🕘</div><div class="navlabel">履歴</div></div>
+            <div class="navitem"><div class="navicon">📝</div><div class="navlabel">後で見る</div></div>
+            <div class="navitem"><div class="navicon">🎵</div><div class="navlabel">再生リスト</div></div>
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="navgrp" style="padding:0 8px;">
+            <div style="padding:8px 10px; border-radius:14px; background:color-mix(in oklab, var(--surface) 85%, transparent); border:1px solid var(--border);">
+              <div style="font-weight:800; font-size:13px; margin-bottom:10px;">プレビュー設定</div>
+
+              <div style="font-size:12px; color:var(--muted); margin-bottom:6px;">角丸（サムネ）</div>
+              <select id="radSel" style="width:100%; height:36px; border-radius:10px; background:transparent; color:var(--text); border:1px solid var(--border); padding:0 10px;">
+                <option value="10">10</option>
+                <option value="12">12</option>
+                <option value="14" selected>14</option>
+                <option value="16">16</option>
+                <option value="18">18</option>
+              </select>
+
+              <div style="font-size:12px; color:var(--muted); margin:12px 0 6px;">カード間隔</div>
+              <select id="gapSel" style="width:100%; height:36px; border-radius:10px; background:transparent; color:var(--text); border:1px solid var(--border); padding:0 10px;">
+                <option value="12">12</option>
+                <option value="16" selected>16</option>
+                <option value="20">20</option>
+              </select>
+
+              <div style="font-size:12px; color:var(--muted); margin:12px 0 6px;">最大幅（左右余白）</div>
+              <select id="maxSel" style="width:100%; height:36px; border-radius:10px; background:transparent; color:var(--text); border:1px solid var(--border); padding:0 10px;">
+                <option value="1600">1600</option>
+                <option value="1760" selected>1760 (推奨)</option>
+                <option value="1920">1920</option>
+                <option value="100%">100% (余白ほぼゼロ)</option>
+              </select>
+
+              <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px;">
+                <button class="pillbtn" id="demoBtn" style="flex:1; justify-content:center;">✨ デモ</button>
+                <button class="pillbtn" id="clearBtn" style="flex:1; justify-content:center;">🗑 クリア</button>
+              </div>
+
+              <div style="font-size:12px; color:var(--muted); margin-top:10px; line-height:1.45;">
+                ・カードをドラッグで並び替え<br>
+                ・カード右上の✕で削除<br>
+                ・カードをダブルクリックで編集
+              </div>
+            </div>
+          </div>
+        </aside>
+
+        <main class="main">
+          <div class="container">
+            <div class="chips" id="chips">
+              <span class="chip active">すべて</span>
+              <span class="chip">音楽</span>
+              <span class="chip">ゲーム</span>
+              <span class="chip">ペット</span>
+              <span class="chip">最近アップロードされた動画</span>
+              <span class="chip">視聴済み</span>
+            </div>
+
+            <section class="drop" id="drop">
+              <div>
+                <strong>ここにサムネ画像をドロップ</strong>
+                <p>複数OK。並び替えはカードをドラッグ。編集はカードをダブルクリック。</p>
+              </div>
+              <div class="drop-actions">
+                <button class="pillbtn" id="addBtn2">＋ 追加</button>
+              </div>
+            </section>
+
+            <section class="grid" id="grid"></section>
+            <input id="file" type="file" accept="image/*" multiple hidden />
+          </div>
+        </main>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const $ = (s)=>document.querySelector(s);
+
+    const appShell = $("#appShell");
+    const desktopMount = $("#desktopMount");
+    const phoneMount = $("#phoneMount");
+
+    // mount initially to desktop
+    desktopMount.appendChild(appShell);
+
+    const grid = $("#grid");
+    const file = $("#file");
+    const drop = $("#drop");
+
+    const LS_KEY = "mocktube_cards_v5";
+    let cards = [];
+    try{ cards = JSON.parse(localStorage.getItem(LS_KEY) || "[]"); }catch(e){ cards=[]; }
+
+    function save(){ localStorage.setItem(LS_KEY, JSON.stringify(cards)); }
+    function escapeHtml(s){
+      return String(s).replace(/[&<>"']/g, c => ({
+        "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
+      }[c]));
+    }
+    function formatDurationFromName(name){
+      const hms = name.match(/(\d{1,2})[:_](\d{2})[:_](\d{2})/);
+      if(hms) return `${hms[1]}:${hms[2]}:${hms[3]}`;
+      const ms = name.match(/(\d{1,2})[:_](\d{2})/);
+      if(ms) return `${ms[1]}:${ms[2]}`;
+      return "1:00:00";
+    }
+
+    function addCardFromFile(f){
+      const url = URL.createObjectURL(f);
+      cards.unshift({
+        id: crypto.randomUUID(),
+        src: url,
+        title: (f.name || "Untitled").replace(/\.[^.]+$/, "").replace(/[_-]+/g," ").trim(),
+        channel: "Sample Channel",
+        views: "12K views",
+        date: "2 days ago",
+        duration: formatDurationFromName(f.name || "")
+      });
+      save();
+      render();
+    }
+
+    function makePlaceholder(text){
+      const c = document.createElement("canvas");
+      c.width = 1280; c.height = 720;
+      const ctx = c.getContext("2d");
+      ctx.fillStyle = "#111"; ctx.fillRect(0,0,c.width,c.height);
+      ctx.fillStyle = "#222";
+      for(let i=0;i<46;i++){
+        ctx.fillRect(Math.random()*c.width, Math.random()*c.height, 120+Math.random()*260, 6+Math.random()*12);
+      }
+      ctx.fillStyle = "#fff";
+      ctx.font = "800 56px system-ui, sans-serif";
+      ctx.fillText("THUMBNAIL", 60, 120);
+      ctx.fillStyle = "#bbb";
+      ctx.font = "600 44px system-ui, sans-serif";
+      wrapText(ctx, text, 60, 210, 1160, 54);
+      return c.toDataURL("image/png");
+    }
+    function wrapText(ctx, text, x, y, maxWidth, lineHeight){
+      const words = text.split(" ");
+      let line = "";
+      for(let n=0;n<words.length;n++){
+        const testLine = line + words[n] + " ";
+        const metrics = ctx.measureText(testLine);
+        if(metrics.width > maxWidth && n > 0){
+          ctx.fillText(line, x, y);
+          line = words[n] + " ";
+          y += lineHeight;
+        }else{
+          line = testLine;
+        }
+      }
+      ctx.fillText(line, x, y);
+    }
+
+    function render(){
+      grid.innerHTML = "";
+      for(const c of cards){
+        const el = document.createElement("article");
+        el.className = "card";
+        el.setAttribute("draggable","true");
+        el.dataset.id = c.id;
+
+        el.innerHTML = `
+          <div class="thumb">
+            <img src="${c.src}" alt="">
+            <button class="delbtn" title="delete" data-del="${c.id}">✕</button>
+            <div class="duration">${escapeHtml(c.duration || "")}</div>
+          </div>
+          <div class="meta">
+            <div class="avatar"></div>
+            <div class="text">
+              <p class="title">${escapeHtml(c.title || "")}</p>
+              <div class="sub">
+                <span class="ch">${escapeHtml(c.channel || "")}</span>
+                <span class="vd">${escapeHtml(c.views || "")} ・ ${escapeHtml(c.date || "")}</span>
+              </div>
+            </div>
+          </div>
+        `;
+
+        el.addEventListener("dblclick", (e)=>{
+          if(e.target && e.target.closest("[data-del]")) return;
+          editCard(c.id);
+        });
+
+        grid.appendChild(el);
+      }
+    }
+
+    function editCard(id){
+      const c = cards.find(x=>x.id===id);
+      if(!c) return;
+
+      const title = prompt("Title", c.title ?? "");
+      if(title === null) return;
+
+      const channel = prompt("Channel", c.channel ?? "");
+      if(channel === null) return;
+
+      const views = prompt("Views (e.g., 12K views)", c.views ?? "");
+      if(views === null) return;
+
+      const date = prompt("Date (e.g., 2 days ago)", c.date ?? "");
+      if(date === null) return;
+
+      const duration = prompt("Duration (e.g., 1:02:33)", c.duration ?? "");
+      if(duration === null) return;
+
+      c.title = title.trim();
+      c.channel = channel.trim();
+      c.views = views.trim();
+      c.date = date.trim();
+      c.duration = duration.trim();
+
+      save();
+      render();
+    }
+
+    function deleteCard(id){
+      const idx = cards.findIndex(x=>x.id===id);
+      if(idx < 0) return;
+      cards.splice(idx, 1);
+      save();
+      render();
+    }
+
+    // reorder DnD
+    let draggingId = null;
+
+    grid.addEventListener("dragstart", (e)=>{
+      const card = e.target.closest(".card");
+      if(!card) return;
+      draggingId = card.dataset.id;
+      card.classList.add("dragging");
+      e.dataTransfer.setData("text/plain", draggingId);
+      e.dataTransfer.effectAllowed = "move";
+    });
+
+    grid.addEventListener("dragend", (e)=>{
+      const card = e.target.closest(".card");
+      if(card) card.classList.remove("dragging");
+      draggingId = null;
+    });
+
+    grid.addEventListener("dragover", (e)=>{
+      e.preventDefault();
+      const over = e.target.closest(".card");
+      if(!over || !draggingId) return;
+
+      const draggingEl = grid.querySelector(`.card[data-id="${CSS.escape(draggingId)}"]`);
+      if(!draggingEl || draggingEl === over) return;
+
+      const overRect = over.getBoundingClientRect();
+      const before = (e.clientY - overRect.top) < (overRect.height / 2);
+
+      if(before) grid.insertBefore(draggingEl, over);
+      else grid.insertBefore(draggingEl, over.nextSibling);
+    });
+
+    grid.addEventListener("drop", (e)=>{
+      e.preventDefault();
+      const order = [...grid.querySelectorAll(".card")].map(x=>x.dataset.id);
+      const map = new Map(cards.map(c=>[c.id, c]));
+      cards = order.map(id=>map.get(id)).filter(Boolean);
+      save();
+      render();
+    });
+
+    // delete delegation
+    grid.addEventListener("click", (e)=>{
+      const btn = e.target.closest("[data-del]");
+      if(!btn) return;
+      e.preventDefault();
+      e.stopPropagation();
+      deleteCard(btn.getAttribute("data-del"));
+    });
+
+    // add
+    const addClicks = ["#addBtn","#addBtn2","#addBtnOuter"].map(sel=>$(sel));
+    addClicks.forEach(btn => btn.addEventListener("click", ()=> file.click()));
+    file.addEventListener("change", ()=>{
+      [...file.files].filter(f=>f.type.startsWith("image/")).forEach(addCardFromFile);
+      file.value = "";
+    });
+
+    // theme (sync buttons labels)
+    function setTheme(isDark){
+      document.body.setAttribute("data-theme", isDark ? "dark" : "light");
+      $("#themeBtn").textContent = isDark ? "🌙 Dark" : "☀️ Light";
+      $("#themeBtnOuter").textContent = isDark ? "🌙 Dark" : "☀️ Light";
+    }
+    $("#themeBtn").addEventListener("click", ()=>{
+      const isDark = document.body.getAttribute("data-theme") !== "light";
+      setTheme(!isDark);
+    });
+    $("#themeBtnOuter").addEventListener("click", ()=>{
+      const isDark = document.body.getAttribute("data-theme") !== "light";
+      setTheme(!isDark);
+    });
+
+    // preview toggle (sync buttons labels + move appShell)
+    function setPreview(mode){
+      const body = document.body;
+      body.setAttribute("data-preview", mode);
+
+      if(mode === "phone"){
+        phoneMount.appendChild(appShell);
+        $("#previewBtn").textContent = "🖥 Desktop";
+        $("#previewBtnOuter").textContent = "🖥 Desktop";
+        phoneMount.scrollTop = 0;
+      }else{
+        desktopMount.appendChild(appShell);
+        $("#previewBtn").textContent = "📱 Phone";
+        $("#previewBtnOuter").textContent = "📱 Phone";
+      }
+    }
+    $("#previewBtn").addEventListener("click", ()=>{
+      const isPhone = document.body.getAttribute("data-preview") === "phone";
+      setPreview(isPhone ? "desktop" : "phone");
+    });
+    $("#previewBtnOuter").addEventListener("click", ()=>{
+      const isPhone = document.body.getAttribute("data-preview") === "phone";
+      setPreview(isPhone ? "desktop" : "phone");
+    });
+
+    // settings
+    $("#radSel").addEventListener("change", (e)=>{
+      document.documentElement.style.setProperty("--thumb-radius", e.target.value + "px");
+    });
+    $("#gapSel").addEventListener("change", (e)=>{
+      document.documentElement.style.setProperty("--grid-gap", e.target.value + "px");
+    });
+    $("#maxSel").addEventListener("change", (e)=>{
+      document.documentElement.style.setProperty("--content-max", e.target.value);
+    });
+
+    // demo
+    $("#demoBtn").addEventListener("click", ()=>{
+      const make = (title, duration)=>({
+        id: crypto.randomUUID(),
+        src: makePlaceholder(title),
+        title,
+        channel:"Sample Channel",
+        views:"1.2M views",
+        date:"1 week ago",
+        duration
+      });
+      cards.unshift(
+        make("Midnight Study Mix", "1:00:00"),
+        make("Rainy Night Lo-Fi", "58:12"),
+        make("Soft Focus Chillhop", "1:12:45"),
+        make("Late Evening Lounge", "45:08"),
+        make("Quiet City Lights", "1:05:00"),
+      );
+      save();
+      render();
+    });
+
+    $("#clearBtn").addEventListener("click", ()=>{
+      if(!confirm("一覧を全部消します。OK？")) return;
+      cards = [];
+      localStorage.removeItem(LS_KEY);
+      render();
+    });
+
+    // drag & drop add
+    ["dragenter","dragover"].forEach(ev=>{
+      document.addEventListener(ev,(e)=>{
+        e.preventDefault();
+        drop.style.filter = "brightness(1.07)";
+      });
+    });
+    ["dragleave","drop"].forEach(ev=>{
+      document.addEventListener(ev,(e)=>{
+        e.preventDefault();
+        drop.style.filter = "";
+      });
+    });
+    document.addEventListener("drop",(e)=>{
+      const files = [...(e.dataTransfer?.files || [])].filter(f=>f.type.startsWith("image/"));
+      if(files.length) files.forEach(addCardFromFile);
+    });
+
+    // chips active
+    $("#chips").addEventListener("click", (e)=>{
+      const chip = e.target.closest(".chip");
+      if(!chip) return;
+      [...$("#chips").querySelectorAll(".chip")].forEach(x=>x.classList.remove("active"));
+      chip.classList.add("active");
+    });
+
+    // hamburger disabled: no listeners.
+
+    // defaults
+    document.documentElement.style.setProperty("--thumb-radius", $("#radSel").value + "px");
+    document.documentElement.style.setProperty("--grid-gap", $("#gapSel").value + "px");
+    document.documentElement.style.setProperty("--content-max", $("#maxSel").value);
+
+    // initial sync
+    setTheme(true);
+    setPreview("desktop");
+    render();
+  </script>
+</body>
+</html>
