@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Suno Workspace Duration Sum
 // @namespace    https://hwiiza.example
-// @version      1.7
+// @version      1.8
 // @description  Workspace 全曲の再生時間をスクロールで集計。右上のバッジを常時表示＆ドラッグ移動＆位置記憶。シングルクリックで集計実行。
 // @match        https://suno.com/*
 // @match        https://www.suno.com/*
@@ -14,9 +14,13 @@
 (function () {
   "use strict";
 
-  console.log("[Suno ScrollSum] loaded (badge click + movable + position memory)");
+  console.log("[Suno ScrollSum] loaded (persistent badge)");
 
   const POS_KEY_BADGE = "suno_scrollsum_badge_pos_v1";
+  const BADGE_ID = "suno-scrollsum-badge";
+
+  let observerStarted = false;
+  let routeHooked = false;
 
   /* ---------------------------
       Utility functions
@@ -61,6 +65,7 @@
       if (!raw) {
         el.style.top = fallbackTop;
         el.style.right = fallbackRight;
+        el.style.left = "";
         return;
       }
       const pos = JSON.parse(raw);
@@ -80,6 +85,7 @@
     }
     el.style.top = fallbackTop;
     el.style.right = fallbackRight;
+    el.style.left = "";
   }
 
   /* ---------------------------
@@ -91,7 +97,6 @@
     el._dragMoved = false;
 
     el.addEventListener("mousedown", (event) => {
-      // 左クリックのみ
       if (event.button !== 0) return;
 
       const rect = el.getBoundingClientRect();
@@ -99,9 +104,8 @@
       shiftY = event.clientY - rect.top;
       el._dragMoved = false;
 
-      // ドラッグ中カーソル変更
-      const prevBodyCursor = document.body.style.cursor;
-      document.body.style.cursor = "move";
+      const prevBodyCursor = document.body ? document.body.style.cursor : "";
+      if (document.body) document.body.style.cursor = "move";
       el.style.cursor = "move";
 
       function moveAt(e) {
@@ -115,14 +119,11 @@
         moveAt(e);
       }
 
-      document.addEventListener("mousemove", onMouseMove);
-
       function onMouseUp() {
         document.removeEventListener("mousemove", onMouseMove);
         document.removeEventListener("mouseup", onMouseUp);
 
-        // カーソルを通常状態に戻す
-        document.body.style.cursor = prevBodyCursor || "";
+        if (document.body) document.body.style.cursor = prevBodyCursor || "";
         el.style.cursor = "pointer";
 
         if (el._dragMoved && storageKey) {
@@ -130,6 +131,7 @@
         }
       }
 
+      document.addEventListener("mousemove", onMouseMove);
       document.addEventListener("mouseup", onMouseUp);
     });
 
@@ -157,9 +159,7 @@
   function findRowGroup() {
     const groups = Array.from(document.querySelectorAll('div[role="rowgroup"]'));
     if (!groups.length) return null;
-    return (
-      groups.find((g) => g.querySelector('[data-testid="clip-row"]')) || groups[0]
-    );
+    return groups.find((g) => g.querySelector('[data-testid="clip-row"]')) || groups[0];
   }
 
   /* ---------------------------
@@ -201,10 +201,81 @@
   }
 
   /* ---------------------------
+      Badge create / ensure
+  ----------------------------*/
+  function getMountRoot() {
+    return document.body || document.documentElement;
+  }
+
+  function createBadge() {
+    const box = document.createElement("div");
+    box.id = BADGE_ID;
+
+    Object.assign(box.style, {
+      position: "fixed",
+      zIndex: "2147483647",
+      padding: "6px 12px",
+      borderRadius: "999px",
+      fontSize: "12px",
+      background: "rgba(246,130,32,0.82)",
+      color: "white",
+      whiteSpace: "nowrap",
+      pointerEvents: "auto",
+      fontFamily: "system-ui, sans-serif",
+      cursor: "pointer",
+      boxShadow: "0 2px 8px rgba(0,0,0,0.25)",
+      userSelect: "none",
+    });
+
+    loadPosition(POS_KEY_BADGE, box, "70px", "16px");
+
+    box.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (box._dragMoved) {
+        box._dragMoved = false;
+        return;
+      }
+      sumAllWithScroll();
+    });
+
+    makeMovable(box, POS_KEY_BADGE);
+    return box;
+  }
+
+  function ensureBadge(text = null) {
+    const mountRoot = getMountRoot();
+    if (!mountRoot) return null;
+
+    let box = document.getElementById(BADGE_ID);
+
+    if (!box) {
+      box = createBadge();
+      mountRoot.appendChild(box);
+    } else if (!box.isConnected) {
+      mountRoot.appendChild(box);
+    }
+
+    if (text !== null) {
+      box.textContent = text;
+    } else if (!box.textContent) {
+      box.textContent = "再生時間を集計";
+    }
+
+    return box;
+  }
+
+  function showBadge(text) {
+    ensureBadge(text);
+  }
+
+  /* ---------------------------
       Full scroll → sum all data
   ----------------------------*/
   async function sumAllWithScroll() {
+    const badge = ensureBadge("集計中...");
     const rowgroup = findRowGroup();
+
     if (!rowgroup) {
       showBadge("曲情報なし");
       return;
@@ -219,21 +290,19 @@
     const maxLoops = 500;
     const step = Math.max(60, Math.floor(scrollEl.clientHeight * 0.85));
 
-    // 初期位置の行もスキャン
     scanVisibleRows(rowgroup, seenIds, totals);
 
     while (
-      scrollEl.scrollTop + scrollEl.clientHeight <
-        scrollEl.scrollHeight - 5 &&
+      scrollEl.scrollTop + scrollEl.clientHeight < scrollEl.scrollHeight - 5 &&
       loops < maxLoops
     ) {
       loops++;
       scrollEl.scrollTop += step;
       await new Promise((resolve) => requestAnimationFrame(resolve));
       scanVisibleRows(rowgroup, seenIds, totals);
+      ensureBadge(badge ? badge.textContent : "集計中...");
     }
 
-    // 元の位置に戻す
     scrollEl.scrollTop = startTop;
 
     if (totals.count === 0) {
@@ -245,51 +314,51 @@
   }
 
   /* ---------------------------
-      Show / create badge
+      Persistent mount
   ----------------------------*/
-  function showBadge(text) {
-    let box = document.getElementById("suno-scrollsum-badge");
-    const first = !box;
+  function startBadgeObserver() {
+    if (observerStarted) return;
+    observerStarted = true;
 
-    if (!box) {
-      box = document.createElement("div");
-      box.id = "suno-scrollsum-badge";
+    const observer = new MutationObserver(() => {
+      ensureBadge();
+    });
 
-      Object.assign(box.style, {
-        position: "fixed",
-        zIndex: 999999,
-        padding: "6px 12px",
-        borderRadius: "999px",
-        fontSize: "12px",
-        background: "rgba(246,130,32,0.75)",
-        color: "white",
-        whiteSpace: "nowrap",
-        pointerEvents: "auto",
-        fontFamily: "system-ui",
-        cursor: "pointer", // 通常は pointer
-      });
+    observer.observe(document.documentElement, {
+      childList: true,
+      subtree: true,
+    });
 
-      // 位置復元（なければデフォルト top/right）
-      loadPosition(POS_KEY_BADGE, box, "70px", "16px");
-      document.body.appendChild(box);
+    // 念のための保険
+    setInterval(() => {
+      ensureBadge();
+    }, 1500);
+  }
 
-      // ドラッグ移動 + 位置記憶
-      makeMovable(box, POS_KEY_BADGE);
+  function hookHistoryEvents() {
+    if (routeHooked) return;
+    routeHooked = true;
 
-      // シングルクリックで集計（ドラッグ後のクリックは無視）
-      box.addEventListener("click", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (box._dragMoved) {
-          // 直前にドラッグしていたときのクリックは無視
-          box._dragMoved = false;
-          return;
-        }
-        sumAllWithScroll();
-      });
-    }
+    const wrap = (fnName) => {
+      const orig = history[fnName];
+      if (typeof orig !== "function") return;
+      history[fnName] = function (...args) {
+        const ret = orig.apply(this, args);
+        setTimeout(() => ensureBadge(), 0);
+        setTimeout(() => ensureBadge(), 300);
+        setTimeout(() => ensureBadge(), 1000);
+        return ret;
+      };
+    };
 
-    box.textContent = text;
+    wrap("pushState");
+    wrap("replaceState");
+
+    window.addEventListener("popstate", () => {
+      setTimeout(() => ensureBadge(), 0);
+      setTimeout(() => ensureBadge(), 300);
+      setTimeout(() => ensureBadge(), 1000);
+    });
   }
 
   /* ---------------------------
@@ -297,12 +366,17 @@
   ----------------------------*/
   function init() {
     if (!/suno\.com$/.test(location.hostname)) return;
-    showBadge("再生時間を集計");
+    ensureBadge("再生時間を集計");
+    startBadgeObserver();
+    hookHistoryEvents();
   }
 
   if (document.readyState === "complete" || document.readyState === "interactive") {
     init();
   } else {
-    window.addEventListener("DOMContentLoaded", init);
+    window.addEventListener("DOMContentLoaded", init, { once: true });
   }
+
+  // 追加の保険
+  window.addEventListener("load", init, { once: true });
 })();
