@@ -1,0 +1,2155 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>国名・首都名 暗記テスト（全世界195）</title>
+  <style>
+    :root { --bd:#ddd; --bg:#fafafa; --ok:#1b7f3b; --ng:#b00020; }
+    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans JP", sans-serif; margin: 16px; }
+    h1 { margin: 0 0 12px; font-size: 20px; }
+    .wrap { max-width: 1100px; margin: 0 auto; }
+    .card { border:1px solid var(--bd); border-radius: 12px; padding: 14px; background: white; }
+    .grid { display:grid; gap:12px; }
+    .grid.cols2 { grid-template-columns: 1fr 1fr; }
+    .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+    .region-grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap:8px 12px; margin-top:8px; }
+    .region-toolbar { display:grid; gap:8px; margin-top:8px; }
+    .toolbar-line { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+    .toolbar-line select { min-width: 220px; }
+    label { display:inline-flex; gap:8px; align-items:center; }
+    select, input[type="text"], button, textarea {
+      font: inherit; padding: 8px 10px; border:1px solid var(--bd); border-radius: 10px;
+    }
+    textarea { width:100%; min-height: 160px; }
+    button { cursor:pointer; background: var(--bg); }
+    button.primary { background:#111; color:#fff; border-color:#111; }
+    button:disabled { opacity:.5; cursor:not-allowed; }
+    .q { font-size: 22px; font-weight: 700; margin: 4px 0 10px; }
+    .sub { color:#666; font-size: 12px; }
+    .choices { display:grid; gap:10px; margin-top: 10px; }
+    .choiceBtn { text-align:left; padding: 10px 12px; border-radius: 12px; }
+    .status { display:flex; gap:12px; flex-wrap:wrap; color:#333; font-size: 13px; }
+    .pill { padding: 4px 10px; border:1px solid var(--bd); border-radius: 999px; background: #fff; }
+    .result { margin-top: 10px; font-weight: 700; line-height: 1.7; }
+    .ok { color: var(--ok); }
+    .ng { color: var(--ng); }
+    .small { font-size: 12px; color:#666; }
+    hr { border:none; border-top:1px solid var(--bd); margin: 12px 0; }
+    details summary { cursor:pointer; }
+    .kbd { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; background:#f2f2f2; padding:2px 6px; border-radius: 6px; }
+    .note { font-size: 12px; color:#555; line-height: 1.7; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h1>国名・首都名 暗記テスト（全世界版）</h1>
+
+  <div class="grid cols2">
+    <div class="card">
+      <div class="grid">
+        <div class="row">
+          <div>
+            <div class="small">回答形式</div>
+            <select id="answerType">
+              <option value="mc">選択式（4択）</option>
+              <option value="text">記述式</option>
+            </select>
+          </div>
+
+          <div>
+            <div class="small">出題方式</div>
+            <select id="direction">
+              <option value="c2cap">国名 → 首都名</option>
+              <option value="cap2c">首都名 → 国名</option>
+              <option value="random">ランダム</option>
+            </select>
+          </div>
+
+          <div>
+            <div class="small">問題数</div>
+            <select id="limit">
+              <option value="10">10問</option>
+              <option value="20" selected>20問</option>
+              <option value="30">30問</option>
+              <option value="50">50問</option>
+              <option value="100">100問</option>
+              <option value="all">全問（重複なし）</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <div class="small">出題範囲（地域別）</div>
+          <div class="region-toolbar">
+            <div class="toolbar-line">
+              <button type="button" id="selectAllRegions">全選択</button>
+              <button type="button" id="clearAllRegions">全解除</button>
+              <button type="button" id="invertRegions">反転</button>
+            </div>
+            <div class="toolbar-line">
+              <select id="continentPreset">
+                <option value="">大陸プリセットを選択</option>
+                <option value="world">全世界</option>
+                <option value="africa">アフリカ</option>
+                <option value="europe">ヨーロッパ</option>
+                <option value="asia">アジア</option>
+                <option value="northAmerica">北アメリカ</option>
+                <option value="southAmerica">南アメリカ</option>
+                <option value="oceania">オセアニア</option>
+              </select>
+              <button type="button" id="applyPresetBtn">プリセット適用</button>
+            </div>
+          </div>
+          <div class="region-grid" id="regions"></div>
+        </div>
+
+        <div class="row">
+          <button class="primary" id="startBtn">スタート</button>
+          <button id="resetBtn">リセット</button>
+          <span class="small">※スタート後も設定は変更できます（次問から反映）</span>
+        </div>
+
+        <details>
+          <summary>データの追加・編集（任意）</summary>
+          <div class="small" style="margin-top:8px;">
+            1行ごとに <span class="kbd">地域,国名,首都1|首都2|首都3</span> の形式で入力できます。<br>
+            例：<span class="kbd">南部アフリカ,南アフリカ,プレトリア|ケープタウン|ブルームフォンテーン</span>
+          </div>
+          <textarea id="customData"></textarea>
+          <div class="row">
+            <button id="applyDataBtn">この内容を反映</button>
+            <button id="restoreDataBtn">標準データに戻す</button>
+          </div>
+        </details>
+
+        <details>
+          <summary>収録基準</summary>
+          <div class="note" style="margin-top:8px;">
+            この版は <b>193の国連加盟国 + バチカン + パレスチナ = 195</b> を基準にしています。<br>
+            複数首都の国は「すべて答えよ」問題として扱われます。
+          </div>
+        </details>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="status">
+        <span class="pill" id="statProgress">未開始</span>
+        <span class="pill" id="statScore">正解: 0 / 0</span>
+        <span class="pill" id="statStreak">連続正解: 0</span>
+      </div>
+      <hr/>
+      <div class="sub" id="qMeta">出題範囲を選んでスタートしてください</div>
+      <div class="q" id="question">—</div>
+
+      <div id="mcArea" style="display:none;">
+        <div class="choices" id="choices"></div>
+      </div>
+
+      <div id="textArea" style="display:none;">
+        <div class="row">
+          <input type="text" id="textAnswer" placeholder="ここに入力してEnter" style="flex:1; min-width: 260px;" />
+          <button id="submitTextBtn" class="primary">回答</button>
+        </div>
+        <div class="small" id="textHint">Enterで回答後、「次の問題」にフォーカスが移ります</div>
+      </div>
+
+      <div class="result" id="result"></div>
+
+      <div class="row" style="margin-top:10px;">
+        <button id="nextBtn" class="primary" disabled>次の問題</button>
+        <button id="revealBtn" disabled>答えを見る</button>
+        <button id="skipBtn" disabled>スキップ</button>
+      </div>
+
+      <details style="margin-top:10px;">
+        <summary>履歴（直近20件）</summary>
+        <div id="history" class="small" style="margin-top:8px;"></div>
+      </details>
+    </div>
+  </div>
+</div>
+
+<script>
+const DEFAULT_ROWS = [
+  [
+    "北アフリカ",
+    "モロッコ",
+    [
+      "ラバト"
+    ]
+  ],
+  [
+    "北アフリカ",
+    "アルジェリア",
+    [
+      "アルジェ"
+    ]
+  ],
+  [
+    "北アフリカ",
+    "チュニジア",
+    [
+      "チュニス"
+    ]
+  ],
+  [
+    "北アフリカ",
+    "リビア",
+    [
+      "トリポリ"
+    ]
+  ],
+  [
+    "北アフリカ",
+    "エジプト",
+    [
+      "カイロ"
+    ]
+  ],
+  [
+    "北アフリカ",
+    "スーダン",
+    [
+      "ハルツーム"
+    ]
+  ],
+  [
+    "西アフリカ",
+    "モーリタニア",
+    [
+      "ヌアクショット"
+    ]
+  ],
+  [
+    "西アフリカ",
+    "セネガル",
+    [
+      "ダカール"
+    ]
+  ],
+  [
+    "西アフリカ",
+    "ガンビア",
+    [
+      "バンジュール"
+    ]
+  ],
+  [
+    "西アフリカ",
+    "ギニアビサウ",
+    [
+      "ビサウ"
+    ]
+  ],
+  [
+    "西アフリカ",
+    "ギニア",
+    [
+      "コナクリ"
+    ]
+  ],
+  [
+    "西アフリカ",
+    "シエラレオネ",
+    [
+      "フリータウン"
+    ]
+  ],
+  [
+    "西アフリカ",
+    "リベリア",
+    [
+      "モンロビア"
+    ]
+  ],
+  [
+    "西アフリカ",
+    "コートジボワール",
+    [
+      "ヤムスクロ"
+    ]
+  ],
+  [
+    "西アフリカ",
+    "ガーナ",
+    [
+      "アクラ"
+    ]
+  ],
+  [
+    "西アフリカ",
+    "トーゴ",
+    [
+      "ロメ"
+    ]
+  ],
+  [
+    "西アフリカ",
+    "ベナン",
+    [
+      "ポルトノボ"
+    ]
+  ],
+  [
+    "西アフリカ",
+    "ブルキナファソ",
+    [
+      "ワガドゥグー"
+    ]
+  ],
+  [
+    "西アフリカ",
+    "マリ",
+    [
+      "バマコ"
+    ]
+  ],
+  [
+    "西アフリカ",
+    "ニジェール",
+    [
+      "ニアメ"
+    ]
+  ],
+  [
+    "西アフリカ",
+    "ナイジェリア",
+    [
+      "アブジャ"
+    ]
+  ],
+  [
+    "西アフリカ",
+    "カーボベルデ",
+    [
+      "プライア"
+    ]
+  ],
+  [
+    "中部アフリカ",
+    "カメルーン",
+    [
+      "ヤウンデ"
+    ]
+  ],
+  [
+    "中部アフリカ",
+    "中央アフリカ",
+    [
+      "バンギ"
+    ]
+  ],
+  [
+    "中部アフリカ",
+    "チャド",
+    [
+      "ンドジャメナ"
+    ]
+  ],
+  [
+    "中部アフリカ",
+    "赤道ギニア",
+    [
+      "マラボ"
+    ]
+  ],
+  [
+    "中部アフリカ",
+    "ガボン",
+    [
+      "リーブルビル"
+    ]
+  ],
+  [
+    "中部アフリカ",
+    "コンゴ共和国",
+    [
+      "ブラザヴィル"
+    ]
+  ],
+  [
+    "中部アフリカ",
+    "コンゴ民主共和国",
+    [
+      "キンシャサ"
+    ]
+  ],
+  [
+    "中部アフリカ",
+    "サントメ・プリンシペ",
+    [
+      "サントメ"
+    ]
+  ],
+  [
+    "東アフリカ",
+    "エチオピア",
+    [
+      "アディスアベバ"
+    ]
+  ],
+  [
+    "東アフリカ",
+    "エリトリア",
+    [
+      "アスマラ"
+    ]
+  ],
+  [
+    "東アフリカ",
+    "ジブチ",
+    [
+      "ジブチ"
+    ]
+  ],
+  [
+    "東アフリカ",
+    "ソマリア",
+    [
+      "モガディシュ"
+    ]
+  ],
+  [
+    "東アフリカ",
+    "ケニア",
+    [
+      "ナイロビ"
+    ]
+  ],
+  [
+    "東アフリカ",
+    "ウガンダ",
+    [
+      "カンパラ"
+    ]
+  ],
+  [
+    "東アフリカ",
+    "ルワンダ",
+    [
+      "キガリ"
+    ]
+  ],
+  [
+    "東アフリカ",
+    "ブルンジ",
+    [
+      "ギテガ"
+    ]
+  ],
+  [
+    "東アフリカ",
+    "タンザニア",
+    [
+      "ドドマ"
+    ]
+  ],
+  [
+    "東アフリカ",
+    "南スーダン",
+    [
+      "ジュバ"
+    ]
+  ],
+  [
+    "東アフリカ",
+    "セーシェル",
+    [
+      "ビクトリア"
+    ]
+  ],
+  [
+    "東アフリカ",
+    "コモロ",
+    [
+      "モロニ"
+    ]
+  ],
+  [
+    "東アフリカ",
+    "マダガスカル",
+    [
+      "アンタナナリボ"
+    ]
+  ],
+  [
+    "東アフリカ",
+    "モーリシャス",
+    [
+      "ポートルイス"
+    ]
+  ],
+  [
+    "南部アフリカ",
+    "南アフリカ",
+    [
+      "プレトリア",
+      "ケープタウン",
+      "ブルームフォンテーン"
+    ]
+  ],
+  [
+    "南部アフリカ",
+    "レソト",
+    [
+      "マセル"
+    ]
+  ],
+  [
+    "南部アフリカ",
+    "エスワティニ",
+    [
+      "ムババーネ",
+      "ロバンバ"
+    ]
+  ],
+  [
+    "南部アフリカ",
+    "モザンビーク",
+    [
+      "マプト"
+    ]
+  ],
+  [
+    "南部アフリカ",
+    "マラウイ",
+    [
+      "リロングウェ"
+    ]
+  ],
+  [
+    "南部アフリカ",
+    "ジンバブエ",
+    [
+      "ハラレ"
+    ]
+  ],
+  [
+    "南部アフリカ",
+    "ザンビア",
+    [
+      "ルサカ"
+    ]
+  ],
+  [
+    "南部アフリカ",
+    "アンゴラ",
+    [
+      "ルアンダ"
+    ]
+  ],
+  [
+    "南部アフリカ",
+    "ナミビア",
+    [
+      "ウィントフック"
+    ]
+  ],
+  [
+    "南部アフリカ",
+    "ボツワナ",
+    [
+      "ハボローネ"
+    ]
+  ],
+  [
+    "北アメリカ",
+    "カナダ",
+    [
+      "オタワ"
+    ]
+  ],
+  [
+    "北アメリカ",
+    "アメリカ合衆国",
+    [
+      "ワシントンD.C."
+    ]
+  ],
+  [
+    "北アメリカ",
+    "メキシコ",
+    [
+      "メキシコシティ"
+    ]
+  ],
+  [
+    "中米・カリブ",
+    "ベリーズ",
+    [
+      "ベルモパン"
+    ]
+  ],
+  [
+    "中米・カリブ",
+    "グアテマラ",
+    [
+      "グアテマラシティ"
+    ]
+  ],
+  [
+    "中米・カリブ",
+    "エルサルバドル",
+    [
+      "サンサルバドル"
+    ]
+  ],
+  [
+    "中米・カリブ",
+    "ホンジュラス",
+    [
+      "テグシガルパ"
+    ]
+  ],
+  [
+    "中米・カリブ",
+    "ニカラグア",
+    [
+      "マナグア"
+    ]
+  ],
+  [
+    "中米・カリブ",
+    "コスタリカ",
+    [
+      "サンホセ"
+    ]
+  ],
+  [
+    "中米・カリブ",
+    "パナマ",
+    [
+      "パナマシティ"
+    ]
+  ],
+  [
+    "中米・カリブ",
+    "バハマ",
+    [
+      "ナッソー"
+    ]
+  ],
+  [
+    "中米・カリブ",
+    "キューバ",
+    [
+      "ハバナ"
+    ]
+  ],
+  [
+    "中米・カリブ",
+    "ジャマイカ",
+    [
+      "キングストン"
+    ]
+  ],
+  [
+    "中米・カリブ",
+    "ハイチ",
+    [
+      "ポルトープランス"
+    ]
+  ],
+  [
+    "中米・カリブ",
+    "ドミニカ共和国",
+    [
+      "サントドミンゴ"
+    ]
+  ],
+  [
+    "中米・カリブ",
+    "アンティグア・バーブーダ",
+    [
+      "セントジョンズ"
+    ]
+  ],
+  [
+    "中米・カリブ",
+    "セントクリストファー・ネービス",
+    [
+      "バセテール"
+    ]
+  ],
+  [
+    "中米・カリブ",
+    "ドミニカ国",
+    [
+      "ロゾー"
+    ]
+  ],
+  [
+    "中米・カリブ",
+    "セントルシア",
+    [
+      "カストリーズ"
+    ]
+  ],
+  [
+    "中米・カリブ",
+    "セントビンセントおよびグレナディーン諸島",
+    [
+      "キングスタウン"
+    ]
+  ],
+  [
+    "中米・カリブ",
+    "グレナダ",
+    [
+      "セントジョージズ"
+    ]
+  ],
+  [
+    "中米・カリブ",
+    "バルバドス",
+    [
+      "ブリッジタウン"
+    ]
+  ],
+  [
+    "中米・カリブ",
+    "トリニダード・トバゴ",
+    [
+      "ポートオブスペイン"
+    ]
+  ],
+  [
+    "南アメリカ",
+    "コロンビア",
+    [
+      "ボゴタ"
+    ]
+  ],
+  [
+    "南アメリカ",
+    "ベネズエラ",
+    [
+      "カラカス"
+    ]
+  ],
+  [
+    "南アメリカ",
+    "ガイアナ",
+    [
+      "ジョージタウン"
+    ]
+  ],
+  [
+    "南アメリカ",
+    "スリナム",
+    [
+      "パラマリボ"
+    ]
+  ],
+  [
+    "南アメリカ",
+    "エクアドル",
+    [
+      "キト"
+    ]
+  ],
+  [
+    "南アメリカ",
+    "ペルー",
+    [
+      "リマ"
+    ]
+  ],
+  [
+    "南アメリカ",
+    "ブラジル",
+    [
+      "ブラジリア"
+    ]
+  ],
+  [
+    "南アメリカ",
+    "ボリビア",
+    [
+      "スクレ",
+      "ラパス"
+    ]
+  ],
+  [
+    "南アメリカ",
+    "パラグアイ",
+    [
+      "アスンシオン"
+    ]
+  ],
+  [
+    "南アメリカ",
+    "チリ",
+    [
+      "サンティアゴ"
+    ]
+  ],
+  [
+    "南アメリカ",
+    "アルゼンチン",
+    [
+      "ブエノスアイレス"
+    ]
+  ],
+  [
+    "南アメリカ",
+    "ウルグアイ",
+    [
+      "モンテビデオ"
+    ]
+  ],
+  [
+    "西ヨーロッパ",
+    "イギリス",
+    [
+      "ロンドン"
+    ]
+  ],
+  [
+    "西ヨーロッパ",
+    "アイルランド",
+    [
+      "ダブリン"
+    ]
+  ],
+  [
+    "西ヨーロッパ",
+    "フランス",
+    [
+      "パリ"
+    ]
+  ],
+  [
+    "西ヨーロッパ",
+    "ベルギー",
+    [
+      "ブリュッセル"
+    ]
+  ],
+  [
+    "西ヨーロッパ",
+    "オランダ",
+    [
+      "アムステルダム"
+    ]
+  ],
+  [
+    "西ヨーロッパ",
+    "ルクセンブルク",
+    [
+      "ルクセンブルク"
+    ]
+  ],
+  [
+    "西ヨーロッパ",
+    "モナコ",
+    [
+      "モナコ"
+    ]
+  ],
+  [
+    "北ヨーロッパ",
+    "アイスランド",
+    [
+      "レイキャビク"
+    ]
+  ],
+  [
+    "西ヨーロッパ",
+    "ドイツ",
+    [
+      "ベルリン"
+    ]
+  ],
+  [
+    "西ヨーロッパ",
+    "オーストリア",
+    [
+      "ウィーン"
+    ]
+  ],
+  [
+    "西ヨーロッパ",
+    "スイス",
+    [
+      "ベルン"
+    ]
+  ],
+  [
+    "西ヨーロッパ",
+    "リヒテンシュタイン",
+    [
+      "ファドゥーツ"
+    ]
+  ],
+  [
+    "北ヨーロッパ",
+    "ノルウェー",
+    [
+      "オスロ"
+    ]
+  ],
+  [
+    "北ヨーロッパ",
+    "スウェーデン",
+    [
+      "ストックホルム"
+    ]
+  ],
+  [
+    "北ヨーロッパ",
+    "フィンランド",
+    [
+      "ヘルシンキ"
+    ]
+  ],
+  [
+    "北ヨーロッパ",
+    "デンマーク",
+    [
+      "コペンハーゲン"
+    ]
+  ],
+  [
+    "北ヨーロッパ",
+    "エストニア",
+    [
+      "タリン"
+    ]
+  ],
+  [
+    "北ヨーロッパ",
+    "ラトビア",
+    [
+      "リガ"
+    ]
+  ],
+  [
+    "北ヨーロッパ",
+    "リトアニア",
+    [
+      "ビリニュス"
+    ]
+  ],
+  [
+    "南ヨーロッパ",
+    "ポルトガル",
+    [
+      "リスボン"
+    ]
+  ],
+  [
+    "南ヨーロッパ",
+    "スペイン",
+    [
+      "マドリード"
+    ]
+  ],
+  [
+    "南ヨーロッパ",
+    "アンドラ",
+    [
+      "アンドラ・ラ・ベリャ"
+    ]
+  ],
+  [
+    "南ヨーロッパ",
+    "イタリア",
+    [
+      "ローマ"
+    ]
+  ],
+  [
+    "南ヨーロッパ",
+    "サンマリノ",
+    [
+      "サンマリノ"
+    ]
+  ],
+  [
+    "南ヨーロッパ",
+    "バチカン",
+    [
+      "バチカン"
+    ]
+  ],
+  [
+    "南ヨーロッパ",
+    "マルタ",
+    [
+      "バレッタ"
+    ]
+  ],
+  [
+    "南ヨーロッパ",
+    "スロベニア",
+    [
+      "リュブリャナ"
+    ]
+  ],
+  [
+    "南ヨーロッパ",
+    "クロアチア",
+    [
+      "ザグレブ"
+    ]
+  ],
+  [
+    "南ヨーロッパ",
+    "ボスニア・ヘルツェゴビナ",
+    [
+      "サラエボ"
+    ]
+  ],
+  [
+    "南ヨーロッパ",
+    "セルビア",
+    [
+      "ベオグラード"
+    ]
+  ],
+  [
+    "南ヨーロッパ",
+    "モンテネグロ",
+    [
+      "ポドゴリツァ"
+    ]
+  ],
+  [
+    "南ヨーロッパ",
+    "コソボ",
+    [
+      "プリシュティナ"
+    ]
+  ],
+  [
+    "南ヨーロッパ",
+    "アルバニア",
+    [
+      "ティラナ"
+    ]
+  ],
+  [
+    "南ヨーロッパ",
+    "北マケドニア",
+    [
+      "スコピエ"
+    ]
+  ],
+  [
+    "南ヨーロッパ",
+    "ギリシャ",
+    [
+      "アテネ"
+    ]
+  ],
+  [
+    "南ヨーロッパ",
+    "キプロス",
+    [
+      "ニコシア"
+    ]
+  ],
+  [
+    "東ヨーロッパ",
+    "ロシア",
+    [
+      "モスクワ"
+    ]
+  ],
+  [
+    "東ヨーロッパ",
+    "ベラルーシ",
+    [
+      "ミンスク"
+    ]
+  ],
+  [
+    "東ヨーロッパ",
+    "ウクライナ",
+    [
+      "キーウ"
+    ]
+  ],
+  [
+    "東ヨーロッパ",
+    "モルドバ",
+    [
+      "キシナウ"
+    ]
+  ],
+  [
+    "東ヨーロッパ",
+    "ルーマニア",
+    [
+      "ブカレスト"
+    ]
+  ],
+  [
+    "東ヨーロッパ",
+    "ブルガリア",
+    [
+      "ソフィア"
+    ]
+  ],
+  [
+    "東ヨーロッパ",
+    "ポーランド",
+    [
+      "ワルシャワ"
+    ]
+  ],
+  [
+    "東ヨーロッパ",
+    "チェコ",
+    [
+      "プラハ"
+    ]
+  ],
+  [
+    "東ヨーロッパ",
+    "スロバキア",
+    [
+      "ブラチスラバ"
+    ]
+  ],
+  [
+    "東ヨーロッパ",
+    "ハンガリー",
+    [
+      "ブダペスト"
+    ]
+  ],
+  [
+    "西アジア",
+    "トルコ",
+    [
+      "アンカラ"
+    ]
+  ],
+  [
+    "西アジア",
+    "ジョージア",
+    [
+      "トビリシ"
+    ]
+  ],
+  [
+    "西アジア",
+    "アルメニア",
+    [
+      "エレバン"
+    ]
+  ],
+  [
+    "西アジア",
+    "アゼルバイジャン",
+    [
+      "バクー"
+    ]
+  ],
+  [
+    "西アジア",
+    "シリア",
+    [
+      "ダマスカス"
+    ]
+  ],
+  [
+    "西アジア",
+    "レバノン",
+    [
+      "ベイルート"
+    ]
+  ],
+  [
+    "西アジア",
+    "イスラエル",
+    [
+      "エルサレム"
+    ]
+  ],
+  [
+    "西アジア",
+    "パレスチナ",
+    [
+      "エルサレム"
+    ]
+  ],
+  [
+    "西アジア",
+    "ヨルダン",
+    [
+      "アンマン"
+    ]
+  ],
+  [
+    "西アジア",
+    "イラク",
+    [
+      "バグダッド"
+    ]
+  ],
+  [
+    "西アジア",
+    "イラン",
+    [
+      "テヘラン"
+    ]
+  ],
+  [
+    "西アジア",
+    "サウジアラビア",
+    [
+      "リヤド"
+    ]
+  ],
+  [
+    "西アジア",
+    "クウェート",
+    [
+      "クウェート"
+    ]
+  ],
+  [
+    "西アジア",
+    "バーレーン",
+    [
+      "マナーマ"
+    ]
+  ],
+  [
+    "西アジア",
+    "カタール",
+    [
+      "ドーハ"
+    ]
+  ],
+  [
+    "西アジア",
+    "アラブ首長国連邦",
+    [
+      "アブダビ"
+    ]
+  ],
+  [
+    "西アジア",
+    "オマーン",
+    [
+      "マスカット"
+    ]
+  ],
+  [
+    "西アジア",
+    "イエメン",
+    [
+      "サヌア"
+    ]
+  ],
+  [
+    "中央アジア",
+    "カザフスタン",
+    [
+      "アスタナ"
+    ]
+  ],
+  [
+    "中央アジア",
+    "ウズベキスタン",
+    [
+      "タシケント"
+    ]
+  ],
+  [
+    "中央アジア",
+    "トルクメニスタン",
+    [
+      "アシガバート"
+    ]
+  ],
+  [
+    "中央アジア",
+    "キルギス",
+    [
+      "ビシュケク"
+    ]
+  ],
+  [
+    "中央アジア",
+    "タジキスタン",
+    [
+      "ドゥシャンベ"
+    ]
+  ],
+  [
+    "南アジア",
+    "アフガニスタン",
+    [
+      "カブール"
+    ]
+  ],
+  [
+    "南アジア",
+    "パキスタン",
+    [
+      "イスラマバード"
+    ]
+  ],
+  [
+    "南アジア",
+    "インド",
+    [
+      "ニューデリー"
+    ]
+  ],
+  [
+    "南アジア",
+    "ネパール",
+    [
+      "カトマンズ"
+    ]
+  ],
+  [
+    "南アジア",
+    "ブータン",
+    [
+      "ティンプー"
+    ]
+  ],
+  [
+    "南アジア",
+    "バングラデシュ",
+    [
+      "ダッカ"
+    ]
+  ],
+  [
+    "南アジア",
+    "スリランカ",
+    [
+      "スリジャヤワルダナプラコッテ",
+    ]
+  ],
+  [
+    "南アジア",
+    "モルディブ",
+    [
+      "マレ"
+    ]
+  ],
+  [
+    "東アジア",
+    "中国",
+    [
+      "北京"
+    ]
+  ],
+  [
+    "東アジア",
+    "モンゴル",
+    [
+      "ウランバートル"
+    ]
+  ],
+  [
+    "東アジア",
+    "北朝鮮",
+    [
+      "平壌"
+    ]
+  ],
+  [
+    "東アジア",
+    "韓国",
+    [
+      "ソウル"
+    ]
+  ],
+  [
+    "東アジア",
+    "日本",
+    [
+      "東京"
+    ]
+  ],
+  [
+    "東アジア",
+    "台湾",
+    [
+      "台北"
+    ]
+  ],
+  [
+    "東南アジア",
+    "ミャンマー",
+    [
+      "ネピドー"
+    ]
+  ],
+  [
+    "東南アジア",
+    "タイ",
+    [
+      "バンコク"
+    ]
+  ],
+  [
+    "東南アジア",
+    "ラオス",
+    [
+      "ビエンチャン"
+    ]
+  ],
+  [
+    "東南アジア",
+    "カンボジア",
+    [
+      "プノンペン"
+    ]
+  ],
+  [
+    "東南アジア",
+    "ベトナム",
+    [
+      "ハノイ"
+    ]
+  ],
+  [
+    "東南アジア",
+    "マレーシア",
+    [
+      "クアラルンプール",
+    ]
+  ],
+  [
+    "東南アジア",
+    "シンガポール",
+    [
+      "シンガポール"
+    ]
+  ],
+  [
+    "東南アジア",
+    "ブルネイ",
+    [
+      "バンダルスリブガワン"
+    ]
+  ],
+  [
+    "東南アジア",
+    "フィリピン",
+    [
+      "マニラ"
+    ]
+  ],
+  [
+    "東南アジア",
+    "インドネシア",
+    [
+      "ジャカルタ"
+    ]
+  ],
+  [
+    "東南アジア",
+    "東ティモール",
+    [
+      "ディリ"
+    ]
+  ],
+  [
+    "オセアニア",
+    "オーストラリア",
+    [
+      "キャンベラ"
+    ]
+  ],
+  [
+    "オセアニア",
+    "ニュージーランド",
+    [
+      "ウェリントン"
+    ]
+  ],
+  [
+    "オセアニア",
+    "パプアニューギニア",
+    [
+      "ポートモレスビー"
+    ]
+  ],
+  [
+    "オセアニア",
+    "ソロモン諸島",
+    [
+      "ホニアラ"
+    ]
+  ],
+  [
+    "オセアニア",
+    "バヌアツ",
+    [
+      "ポートビラ"
+    ]
+  ],
+  [
+    "オセアニア",
+    "フィジー",
+    [
+      "スバ"
+    ]
+  ],
+  [
+    "オセアニア",
+    "サモア",
+    [
+      "アピア"
+    ]
+  ],
+  [
+    "オセアニア",
+    "トンガ",
+    [
+      "ヌクアロファ"
+    ]
+  ],
+  [
+    "オセアニア",
+    "ツバル",
+    [
+      "フナフティ"
+    ]
+  ],
+  [
+    "オセアニア",
+    "キリバス",
+    [
+      "タラワ"
+    ]
+  ],
+  [
+    "オセアニア",
+    "ナウル",
+    [
+      "ヤレン"
+    ]
+  ],
+  [
+    "オセアニア",
+    "ミクロネシア連邦",
+    [
+      "パリキール"
+    ]
+  ],
+  [
+    "オセアニア",
+    "マーシャル諸島",
+    [
+      "マジュロ"
+    ]
+  ],
+  [
+    "オセアニア",
+    "パラオ",
+    [
+      "ンゲルルムッド"
+    ]
+  ]
+];
+const DEFAULT_REGION_LIST = ["北アフリカ", "西アフリカ", "中部アフリカ", "東アフリカ", "南部アフリカ", "北アメリカ", "中米・カリブ", "南アメリカ", "西ヨーロッパ", "北ヨーロッパ", "南ヨーロッパ", "東ヨーロッパ", "西アジア", "中央アジア", "南アジア", "東アジア", "東南アジア", "オセアニア"];
+const REGION_PRESETS = {
+  world: null,
+  africa: ["北アフリカ", "西アフリカ", "中部アフリカ", "東アフリカ", "南部アフリカ"],
+  europe: ["西ヨーロッパ", "北ヨーロッパ", "南ヨーロッパ", "東ヨーロッパ"],
+  asia: ["西アジア", "中央アジア", "南アジア", "東アジア", "東南アジア"],
+  northAmerica: ["北アメリカ", "中米・カリブ"],
+  southAmerica: ["南アメリカ"],
+  oceania: ["オセアニア"]
+};
+
+
+const RAW_ALIASES = {
+  "コート・ジボワール": "コートジボワール",
+  "コートジボアール": "コートジボワール",
+  "cotedivoire": "コートジボワール",
+  "ivorycoast": "コートジボワール",
+  "usa": "アメリカ合衆国",
+  "us": "アメリカ合衆国",
+  "u.s.a": "アメリカ合衆国",
+  "uk": "イギリス",
+  "u.k.": "イギリス",
+  "ボスニアヘルツェゴビナ": "ボスニア・ヘルツェゴビナ",
+  "uae": "アラブ首長国連邦",
+  "drc": "コンゴ民主共和国",
+  "drコンゴ": "コンゴ民主共和国",
+  "コンゴ（民）": "コンゴ民主共和国",
+  "コンゴ民": "コンゴ民主共和国",
+  "コンゴ（共）": "コンゴ共和国",
+  "コンゴ共": "コンゴ共和国",
+  "サントメプリンシペ": "サントメ・プリンシペ",
+  "スワジランド": "エスワティニ",
+  "エスワティニ王国": "エスワティニ",
+  "カーボヴェルデ": "カーボベルデ",
+  "東ティモール民主共和国": "東ティモール",
+  "timorleste": "東ティモール",
+  "ヤウンデー": "ヤウンデ",
+  "アディス・アベバ": "アディスアベバ",
+  "ンジャメナ": "ンドジャメナ",
+  "n'djamena": "ンドジャメナ",
+  "ndjamena": "ンドジャメナ",
+  "ndjaména": "ンドジャメナ",
+  "porto-novo": "ポルトノボ",
+  "portonovo": "ポルトノボ",
+  "yamoussoukro": "ヤムスクロ",
+  "リーブルヴィル": "リーブルビル",
+  "ブラザビル": "ブラザヴィル",
+  "ラパス市": "ラパス",
+  "ワシントンdc": "ワシントンD.C.",
+  "washingtondc": "ワシントンD.C.",
+  "washingtond.c.": "ワシントンD.C.",
+  "stjohns": "セントジョンズ",
+  "stgeorges": "セントジョージズ",
+  "kingstown": "キングスタウン",
+  "portofspain": "ポートオブスペイン",
+  "saintpetersburg": "サンクトペテルブルク",
+  "andorralavella": "アンドラ・ラ・ベリャ",
+  "vaduz": "ファドゥーツ",
+  "bratislava": "ブラチスラバ",
+  "podgorica": "ポドゴリツァ",
+  "chisinau": "キシナウ",
+  "kyiv": "キーウ",
+  "kiev": "キーウ",
+  "tbilisi": "トビリシ",
+  "yerevan": "エレバン",
+  "baku": "バクー",
+  "jerusalem": "エルサレム",
+  "amman": "アンマン",
+  "ashgabat": "アシガバート",
+  "dushanbe": "ドゥシャンベ",
+  "thimphu": "ティンプー",
+  "dhaka": "ダッカ",
+  "srijayawardenepurakotte": "スリジャヤワルダナプラコッテ",
+  "newdelhi": "ニューデリー",
+  "ulaanbaatar": "ウランバートル",
+  "ulambator": "ウランバートル",
+  "naypyidaw": "ネピドー",
+  "vientiane": "ビエンチャン",
+  "phnompenh": "プノンペン",
+  "kualalumpur": "クアラルンプール",
+  "putrajaya": "プトラジャヤ",
+  "bandarseribegawan": "バンダルスリブガワン",
+  "dili": "ディリ",
+  "ネーピードー": "ネピドー",
+  "portmoresby": "ポートモレスビー",
+  "portvila": "ポートビラ",
+  "nukualofa": "ヌクアロファ",
+  "funafuti": "フナフティ",
+  "tarawa": "タラワ",
+  "yaren": "ヤレン",
+  "palikir": "パリキール",
+  "majuro": "マジュロ",
+  "ngerulmud": "ンゲルルムッド",
+  "bloemfontein": "ブルームフォンテーン",
+  "capetown": "ケープタウン",
+  "mbabane": "ムババーネ",
+  "lobamba": "ロバンバ"
+};
+
+const $ = (id) => document.getElementById(id);
+
+function baseNormalize(s) {
+  return (s ?? "")
+    .toString()
+    .trim()
+    .normalize("NFKC")
+    .replace(/[\s\u3000]+/g, "")
+    .replace(/[･・]/g, "・")
+    .replace(/[‐-‒–—―−]/g, "-")
+    .replace(/[()（）［］\[\]{}｛｝,.、。:：;；'"“”‘’]/g, "")
+    .toLowerCase();
+}
+
+const ALIASES = Object.fromEntries(
+  Object.entries(RAW_ALIASES).map(([k, v]) => [baseNormalize(k), v])
+);
+
+function normalize(s, depth = 0) {
+  const x = baseNormalize(s);
+  if (depth > 5) return x;
+  if (ALIASES[x]) return normalize(ALIASES[x], depth + 1);
+  return x;
+}
+
+function normalizeSet(arr) {
+  return new Set(arr.map(x => normalize(x)));
+}
+
+function splitMultiAnswer(input) {
+  return (input ?? "")
+    .split(/[、,\/／|]+/)
+    .map(x => x.trim())
+    .filter(Boolean);
+}
+
+function sameSet(a, b) {
+  if (a.size !== b.size) return false;
+  for (const v of a) {
+    if (!b.has(v)) return false;
+  }
+  return true;
+}
+
+function shuffle(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function uniqueByNormalized(arr) {
+  const seen = new Set();
+  const result = [];
+  for (const item of arr) {
+    const key = normalize(item);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(item);
+  }
+  return result;
+}
+
+function sampleWithout(arr, withoutSet, n) {
+  const pool = [];
+  const seen = new Set([...withoutSet]);
+  for (const item of shuffle(arr)) {
+    const key = normalize(item);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    pool.push(item);
+    if (pool.length >= n) break;
+  }
+  return pool;
+}
+
+let rows = DEFAULT_ROWS.map(([region, country, capitals]) => ({ region, country, capitals }));
+let regionList = DEFAULT_REGION_LIST.slice();
+
+let started = false;
+let queue = [];
+let current = null;
+let answered = false;
+
+let total = 0;
+let correct = 0;
+let streak = 0;
+let history = [];
+
+function renderRegions() {
+  const box = $("regions");
+  box.innerHTML = "";
+  regionList.forEach((r, idx) => {
+    const id = `reg_${idx}`;
+    const wrap = document.createElement("label");
+    wrap.innerHTML = `<input type="checkbox" id="${id}" checked> ${r}`;
+    box.appendChild(wrap);
+  });
+}
+
+function setAllRegions(checked) {
+  regionList.forEach((_, idx) => {
+    const el = $(`reg_${idx}`);
+    if (el) el.checked = checked;
+  });
+}
+
+function invertRegions() {
+  regionList.forEach((_, idx) => {
+    const el = $(`reg_${idx}`);
+    if (el) el.checked = !el.checked;
+  });
+}
+
+function applyRegionPreset(presetKey) {
+  if (!presetKey) return;
+  if (presetKey === "world") {
+    setAllRegions(true);
+    return;
+  }
+  const targetRegions = new Set(REGION_PRESETS[presetKey] || []);
+  regionList.forEach((region, idx) => {
+    const el = $(`reg_${idx}`);
+    if (!el) return;
+    el.checked = targetRegions.has(region);
+  });
+}
+
+function rowsToText(rws) {
+  return rws.map(x => `${x.region},${x.country},${x.capitals.join("|")}`).join("\n");
+}
+
+function applyCustomData() {
+  const text = $("customData").value || "";
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+
+  const parsed = [];
+  const regions = new Set();
+
+  for (const line of lines) {
+    const parts = line.split(",").map(x => x.trim());
+    if (parts.length < 3) continue;
+
+    const region = parts[0];
+    const country = parts[1];
+    const capitalsRaw = parts.slice(2).join(",");
+
+    const capitals = capitalsRaw.split("|").map(x => x.trim()).filter(Boolean);
+    if (!region || !country || capitals.length === 0) continue;
+
+    parsed.push({ region, country, capitals });
+    regions.add(region);
+  }
+
+  if (parsed.length === 0) {
+    alert("有効な行がありません。形式は「地域,国名,首都1|首都2|首都3」です。");
+    return;
+  }
+
+  rows = parsed;
+  regionList = Array.from(regions);
+  renderRegions();
+  hardReset(false);
+}
+
+function restoreDefaultData() {
+  rows = DEFAULT_ROWS.map(([region, country, capitals]) => ({ region, country, capitals }));
+  regionList = DEFAULT_REGION_LIST.slice();
+  $("customData").value = rowsToText(rows);
+  renderRegions();
+  hardReset(false);
+}
+
+function selectedPool() {
+  const activeRegions = new Set(
+    regionList
+      .map((r, idx) => ({ r, checked: $(`reg_${idx}`)?.checked }))
+      .filter(x => x.checked)
+      .map(x => x.r)
+  );
+  return rows.filter(x => activeRegions.has(x.region));
+}
+
+function getDirectionForThisQuestion() {
+  const d = $("direction").value;
+  if (d === "random") return (Math.random() < 0.5 ? "c2cap" : "cap2c");
+  return d;
+}
+
+function buildQueue() {
+  const pool = selectedPool();
+  if (pool.length === 0) {
+    alert("出題範囲が空です。地域を1つ以上選んでください。");
+    return null;
+  }
+  if (pool.length < 4 && $("answerType").value === "mc") {
+    alert("選択式（4択）には、出題範囲に最低4件必要です。地域を増やすか記述式にしてください。");
+    return null;
+  }
+
+  const lim = $("limit").value;
+  const shuffled = shuffle(pool);
+  if (lim === "all") return shuffled;
+  const n = Math.min(parseInt(lim, 10), shuffled.length);
+  return shuffled.slice(0, n);
+}
+
+function getPrimaryCapital(item) {
+  return item.capitals[0];
+}
+
+function getAllCapitalsLabel(item) {
+  return item.capitals.join(" / ");
+}
+
+function isMultiCapitalQuestion(item, dir) {
+  return dir === "c2cap" && item.capitals.length > 1;
+}
+
+function getEffectiveAnswerType(item, dir) {
+  if (isMultiCapitalQuestion(item, dir)) return "text";
+  return $("answerType").value;
+}
+
+function showQuestion(qItem) {
+  current = qItem;
+  answered = false;
+
+  $("result").textContent = "";
+  $("nextBtn").disabled = true;
+  $("revealBtn").disabled = false;
+  $("skipBtn").disabled = false;
+
+  const dir = current._dir;
+  const effectiveAnswerType = getEffectiveAnswerType(qItem, dir);
+  const qText = (dir === "c2cap") ? qItem.country : getPrimaryCapital(qItem);
+
+  let meta = `地域: ${qItem.region} ／ 出題: ${dir === "c2cap" ? "国→首都" : "首都→国"} ／ 形式: ${effectiveAnswerType === "mc" ? "選択式" : "記述式"}`;
+
+  if (isMultiCapitalQuestion(qItem, dir)) {
+    meta += " ／ 首都をすべて答えよ";
+    $("question").textContent = `${qText} の首都をすべて答えよ`;
+    $("textHint").textContent = "区切りは「、」「,」「/」「／」「|」のどれでもOKです";
+  } else {
+    $("question").textContent = qText;
+    $("textHint").textContent = "Enterで回答後、「次の問題」にフォーカスが移ります";
+  }
+
+  $("qMeta").textContent = meta;
+
+  if (effectiveAnswerType === "mc") {
+    $("mcArea").style.display = "";
+    $("textArea").style.display = "none";
+    renderChoices(qItem, dir);
+  } else {
+    $("mcArea").style.display = "none";
+    $("textArea").style.display = "";
+    $("textAnswer").value = "";
+    $("textAnswer").focus();
+  }
+}
+
+function renderChoices(item, dir) {
+  let correctAnswer = dir === "c2cap" ? getPrimaryCapital(item) : item.country;
+  const pool = selectedPool();
+  const allAnswers = uniqueByNormalized(pool.map(x => dir === "c2cap" ? getPrimaryCapital(x) : x.country));
+
+  const correctNorm = normalize(correctAnswer);
+  const used = new Set([correctNorm]);
+  const distractors = sampleWithout(allAnswers, used, 3);
+  const options = shuffle([correctAnswer, ...distractors]);
+
+  const box = $("choices");
+  box.innerHTML = "";
+  options.forEach(opt => {
+    const b = document.createElement("button");
+    b.className = "choiceBtn";
+    b.type = "button";
+    b.textContent = opt;
+    b.addEventListener("click", () => answerWithDir(opt, current._dir));
+    box.appendChild(b);
+  });
+}
+
+function isCorrectAnswer(userAnswer, item, dir) {
+  if (dir === "cap2c") {
+    return normalize(userAnswer) === normalize(item.country);
+  }
+  if (item.capitals.length === 1) {
+    return normalize(userAnswer) === normalize(item.capitals[0]);
+  }
+  const userList = splitMultiAnswer(userAnswer);
+  const userSet = normalizeSet(userList);
+  const correctSet = normalizeSet(item.capitals);
+  return sameSet(userSet, correctSet);
+}
+
+function getCorrectAnswerLabel(item, dir) {
+  if (dir === "c2cap") return getAllCapitalsLabel(item);
+  return item.country;
+}
+
+function answerWithDir(userAnswer, dir) {
+  if (!current || answered) return;
+  answered = true;
+
+  const correctLabel = getCorrectAnswerLabel(current, dir);
+  const ok = isCorrectAnswer(userAnswer, current, dir);
+
+  total++;
+  if (ok) {
+    correct++;
+    streak++;
+    $("result").innerHTML = `<span class="ok">正解！</span>　答え：${correctLabel}`;
+  } else {
+    streak = 0;
+    $("result").innerHTML = `<span class="ng">不正解</span>　あなた：${userAnswer || "（未入力）"} ／ 正解：${correctLabel}`;
+  }
+
+  history.unshift({
+    q: $("question").textContent,
+    your: userAnswer || "（未入力）",
+    ans: correctLabel,
+    ok
+  });
+  history = history.slice(0, 20);
+  renderHistory();
+
+  $("nextBtn").disabled = false;
+  $("revealBtn").disabled = true;
+  $("skipBtn").disabled = true;
+
+  updateStats();
+  $("nextBtn").focus();
+}
+
+function revealAnswer() {
+  if (!current || answered) return;
+  const dir = current._dir;
+  const correctLabel = getCorrectAnswerLabel(current, dir);
+  $("result").innerHTML = `<span class="ng">答え</span>：${correctLabel}`;
+  $("nextBtn").disabled = false;
+  $("skipBtn").disabled = true;
+  $("revealBtn").disabled = true;
+  $("nextBtn").focus();
+}
+
+function skipQuestion() {
+  if (!current || answered) return;
+  total++;
+  streak = 0;
+
+  const dir = current._dir;
+  const correctLabel = getCorrectAnswerLabel(current, dir);
+
+  history.unshift({
+    q: $("question").textContent,
+    your: "（スキップ）",
+    ans: correctLabel,
+    ok: false
+  });
+  history = history.slice(0, 20);
+  renderHistory();
+
+  $("result").innerHTML = `<span class="ng">スキップ</span>　正解：${correctLabel}`;
+  $("nextBtn").disabled = false;
+  $("revealBtn").disabled = true;
+  $("skipBtn").disabled = true;
+  updateStats();
+  $("nextBtn").focus();
+}
+
+function nextQuestion() {
+  if (!started) return;
+
+  if (queue.length === 0) {
+    $("question").textContent = "終了！";
+    $("qMeta").textContent = "おつかれさまでした";
+    $("mcArea").style.display = "none";
+    $("textArea").style.display = "none";
+    $("nextBtn").disabled = true;
+    $("revealBtn").disabled = true;
+    $("skipBtn").disabled = true;
+    $("result").innerHTML = `スコア：<b>${correct}</b> / <b>${total}</b>`;
+    $("statProgress").textContent = `終了（${total}問）`;
+    return;
+  }
+
+  const item = queue.shift();
+  item._dir = getDirectionForThisQuestion();
+  showQuestion(item);
+  updateStats();
+}
+
+function updateStats() {
+  $("statScore").textContent = `正解: ${correct} / ${total}`;
+  $("statStreak").textContent = `連続正解: ${streak}`;
+  $("statProgress").textContent = started ? `進捗: ${total}問` : "未開始";
+}
+
+function renderHistory() {
+  if (history.length === 0) {
+    $("history").textContent = "履歴はまだありません";
+    return;
+  }
+  $("history").innerHTML = history.map(h => {
+    const mark = h.ok ? "✅" : "❌";
+    return `${mark} Q:${h.q} ／ あなた:${h.your} ／ 正解:${h.ans}`;
+  }).join("<br>");
+}
+
+function start() {
+  const q = buildQueue();
+  if (!q) return;
+
+  started = true;
+  queue = q;
+  total = 0;
+  correct = 0;
+  streak = 0;
+  history = [];
+  renderHistory();
+
+  $("statProgress").textContent = "開始";
+  updateStats();
+
+  $("nextBtn").disabled = false;
+  $("revealBtn").disabled = true;
+  $("skipBtn").disabled = true;
+
+  nextQuestion();
+}
+
+function hardReset(clearTextArea = true) {
+  started = false;
+  queue = [];
+  current = null;
+  answered = false;
+
+  total = 0;
+  correct = 0;
+  streak = 0;
+  history = [];
+  renderHistory();
+
+  $("question").textContent = "—";
+  $("qMeta").textContent = "出題範囲を選んでスタートしてください";
+  $("result").textContent = "";
+
+  $("statProgress").textContent = "未開始";
+  $("statScore").textContent = "正解: 0 / 0";
+  $("statStreak").textContent = "連続正解: 0";
+
+  $("mcArea").style.display = "none";
+  $("textArea").style.display = "none";
+  $("nextBtn").disabled = true;
+  $("revealBtn").disabled = true;
+  $("skipBtn").disabled = true;
+
+  if (clearTextArea) $("textAnswer").value = "";
+}
+
+$("startBtn").addEventListener("click", start);
+$("resetBtn").addEventListener("click", () => hardReset());
+$("applyDataBtn").addEventListener("click", applyCustomData);
+$("restoreDataBtn").addEventListener("click", restoreDefaultData);
+$("nextBtn").addEventListener("click", nextQuestion);
+$("revealBtn").addEventListener("click", revealAnswer);
+$("skipBtn").addEventListener("click", skipQuestion);
+$("selectAllRegions").addEventListener("click", () => setAllRegions(true));
+$("clearAllRegions").addEventListener("click", () => setAllRegions(false));
+$("invertRegions").addEventListener("click", invertRegions);
+$("applyPresetBtn").addEventListener("click", () => applyRegionPreset($("continentPreset").value));
+
+$("submitTextBtn").addEventListener("click", () => {
+  if (!current || answered) return;
+  answerWithDir($("textAnswer").value, current._dir);
+  $("textAnswer").value = "";
+});
+
+$("textAnswer").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    if (!current || answered) return;
+    answerWithDir($("textAnswer").value, current._dir);
+    $("textAnswer").value = "";
+  }
+});
+
+renderRegions();
+$("customData").value = rowsToText(rows);
+hardReset(false);
+</script>
+</body>
+</html>
