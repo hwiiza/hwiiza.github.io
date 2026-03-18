@@ -164,7 +164,7 @@
       </div>
 
       <details style="margin-top:10px;">
-        <summary>履歴（直近20件）</summary>
+        <summary>履歴</summary>
         <div id="history" class="small" style="margin-top:8px;"></div>
       </details>
     </div>
@@ -1902,7 +1902,9 @@ function showQuestion(qItem) {
     $("question").textContent = `${qText} の首都をすべて答えよ`;
     $("textHint").textContent = "区切りは「、」「,」「/」「／」「|」のどれでもOKです";
   } else {
-    $("question").textContent = qText;
+    $("question").textContent = dir === "c2cap"
+      ? `${qText} の首都名は？`
+      : `${qText} の国名は？`;
     $("textHint").textContent = "Enterで回答後、「次の問題」にフォーカスが移ります";
   }
 
@@ -1983,7 +1985,7 @@ function answerWithDir(userAnswer, dir) {
     ans: correctLabel,
     ok
   });
-  history = history.slice(0, 20);
+  history = history.slice(0, 200);
   renderHistory();
 
   $("nextBtn").disabled = false;
@@ -2019,7 +2021,7 @@ function skipQuestion() {
     ans: correctLabel,
     ok: false
   });
-  history = history.slice(0, 20);
+  history = history.slice(0, 200);
   renderHistory();
 
   $("result").innerHTML = `<span class="ng">スキップ</span>　正解：${correctLabel}`;
