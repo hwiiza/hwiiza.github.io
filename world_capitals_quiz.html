@@ -1805,6 +1805,7 @@ let total = 0;
 let correct = 0;
 let streak = 0;
 let history = [];
+let lastIsMobileView = window.matchMedia('(max-width: 900px)').matches;
 
 function isMobileView() {
   return window.matchMedia('(max-width: 900px)').matches;
@@ -1833,11 +1834,22 @@ function toggleConfigCard() {
 }
 
 function syncConfigCardForViewport() {
+  const mobile = isMobileView();
   if (!started) {
     setConfigCollapsed(false);
+    lastIsMobileView = mobile;
     return;
   }
-  setConfigCollapsed(isMobileView());
+
+  if (mobile !== lastIsMobileView) {
+    if (mobile) {
+      setConfigCollapsed(true);
+    } else {
+      setConfigCollapsed(false);
+    }
+  }
+
+  lastIsMobileView = mobile;
 }
 
 function renderRegions() {
