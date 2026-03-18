@@ -2195,7 +2195,12 @@ function start() {
   $("revealBtn").disabled = true;
   $("skipBtn").disabled = true;
 
-  if (isMobileView()) setConfigCollapsed(true);
+  if (isMobileView()) {
+    setConfigCollapsed(true);
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+  }
 
   nextQuestion();
 }
