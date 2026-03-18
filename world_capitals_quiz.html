@@ -1,3 +1,4 @@
+
 <!doctype html>
 <html lang="ja">
 <head>
@@ -39,13 +40,17 @@
     details summary { cursor:pointer; }
     .kbd { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; background:#f2f2f2; padding:2px 6px; border-radius: 6px; }
     .note { font-size: 12px; color:#555; line-height: 1.7; }
+    #toggleConfigBtn { width: 100%; }
 
     @media (max-width: 900px) {
       body { margin: 10px; }
       h1 { font-size: 18px; line-height: 1.35; }
       .grid.cols2 { grid-template-columns: 1fr; }
       .grid.cols2 > .card:last-child { order: -1; }
+      #configToggleRow { display:flex !important; }
       .card { padding: 12px; }
+      #configCard.collapsed { padding: 0; border: none; background: transparent; }
+      #configCard.collapsed #configInner { display: none; }
       .q { font-size: 32px; line-height: 1.15; }
       .status { gap: 8px; }
       .pill { font-size: 12px; }
@@ -99,8 +104,8 @@
   <h1>国名・首都名 暗記テスト（全世界版）</h1>
 
   <div class="grid cols2">
-    <div class="card">
-      <div class="grid">
+    <div class="card" id="configCard">
+      <div class="grid" id="configInner">
         <div class="row">
           <div>
             <div class="small">回答形式</div>
@@ -186,7 +191,10 @@
       </div>
     </div>
 
-    <div class="card">
+    <div class="card" id="quizCard">
+      <div class="row" id="configToggleRow" style="display:none; margin-bottom:10px;">
+        <button type="button" id="toggleConfigBtn">出題設定を開く</button>
+      </div>
       <div class="status">
         <span class="pill" id="statProgress">未開始</span>
         <span class="pill" id="statScore">正解: 0 / 0</span>
@@ -1800,6 +1808,40 @@ let correct = 0;
 let streak = 0;
 let history = [];
 
+function isMobileView() {
+  return window.matchMedia('(max-width: 900px)').matches;
+}
+
+function setConfigCollapsed(collapsed) {
+  const card = $("configCard");
+  const btn = $("toggleConfigBtn");
+  if (!card || !btn) return;
+  if (isMobileView() && collapsed) {
+    card.classList.add('collapsed');
+    btn.textContent = '出題設定を開く';
+    btn.setAttribute('aria-expanded', 'false');
+  } else {
+    card.classList.remove('collapsed');
+    btn.textContent = '出題設定を閉じる';
+    btn.setAttribute('aria-expanded', 'true');
+  }
+}
+
+function toggleConfigCard() {
+  const card = $("configCard");
+  if (!card) return;
+  const collapsed = card.classList.contains('collapsed');
+  setConfigCollapsed(!collapsed);
+}
+
+function syncConfigCardForViewport() {
+  if (!started) {
+    setConfigCollapsed(false);
+    return;
+  }
+  setConfigCollapsed(isMobileView());
+}
+
 function renderRegions() {
   const box = $("regions");
   box.innerHTML = "";
@@ -2143,6 +2185,8 @@ function start() {
   $("revealBtn").disabled = true;
   $("skipBtn").disabled = true;
 
+  if (isMobileView()) setConfigCollapsed(true);
+
   nextQuestion();
 }
 
@@ -2173,6 +2217,8 @@ function hardReset(clearTextArea = true) {
   $("skipBtn").disabled = true;
 
   if (clearTextArea) $("textAnswer").value = "";
+
+  setConfigCollapsed(false);
 }
 
 $("startBtn").addEventListener("click", start);
@@ -2186,6 +2232,8 @@ $("selectAllRegions").addEventListener("click", () => setAllRegions(true));
 $("clearAllRegions").addEventListener("click", () => setAllRegions(false));
 $("invertRegions").addEventListener("click", invertRegions);
 $("applyPresetBtn").addEventListener("click", () => applyRegionPreset($("continentPreset").value));
+$("toggleConfigBtn").addEventListener("click", toggleConfigCard);
+window.addEventListener("resize", syncConfigCardForViewport);
 
 $("submitTextBtn").addEventListener("click", () => {
   if (!current || answered) return;
@@ -2205,6 +2253,7 @@ $("textAnswer").addEventListener("keydown", (e) => {
 renderRegions();
 $("customData").value = rowsToText(rows);
 hardReset(false);
+syncConfigCardForViewport();
 </script>
 </body>
 </html>
