@@ -39,6 +39,59 @@
     details summary { cursor:pointer; }
     .kbd { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; background:#f2f2f2; padding:2px 6px; border-radius: 6px; }
     .note { font-size: 12px; color:#555; line-height: 1.7; }
+
+    @media (max-width: 900px) {
+      body { margin: 10px; }
+      h1 { font-size: 18px; line-height: 1.35; }
+      .grid.cols2 { grid-template-columns: 1fr; }
+      .grid.cols2 > .card:last-child { order: -1; }
+      .card { padding: 12px; }
+      .q { font-size: 32px; line-height: 1.15; }
+      .status { gap: 8px; }
+      .pill { font-size: 12px; }
+      .choices { gap: 12px; }
+      .choiceBtn {
+        width: 100%;
+        font-size: 20px;
+        line-height: 1.35;
+        padding: 14px 16px;
+        white-space: normal;
+        word-break: break-word;
+      }
+      #textArea .row,
+      .toolbar-line,
+      .row { align-items: stretch; }
+      #textArea .row {
+        flex-direction: column;
+      }
+      #textAnswer {
+        min-width: 0 !important;
+        width: 100%;
+        box-sizing: border-box;
+        font-size: 18px;
+      }
+      #submitTextBtn,
+      #nextBtn,
+      #revealBtn,
+      #skipBtn {
+        width: 100%;
+      }
+      .toolbar-line select,
+      #answerType,
+      #direction,
+      #limit,
+      #continentPreset {
+        width: 100%;
+        min-width: 0;
+        box-sizing: border-box;
+      }
+      .region-grid { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 480px) {
+      .q { font-size: 28px; }
+      .choiceBtn { font-size: 18px; }
+    }
   </style>
 </head>
 <body>
