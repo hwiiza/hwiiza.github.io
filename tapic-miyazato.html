@@ -1,1 +1,935 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>医療法人タピック 宮里病院</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&family=Noto+Serif+JP:wght@400;600&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+    :root {
+      --primary:   #1a5f7a;
+      --primary-light: #2a8aad;
+      --accent:    #57c5b6;
+      --accent2:   #159895;
+      --bg:        #f8fbfc;
+      --surface:   #ffffff;
+      --text:      #1e2a35;
+      --text-sub:  #4a6070;
+      --border:    #d6e8ee;
+      --radius:    12px;
+      --shadow:    0 4px 24px rgba(26,95,122,0.10);
+      --shadow-lg: 0 8px 40px rgba(26,95,122,0.16);
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Noto Sans JP', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.7;
+      font-size: 16px;
+    }
+
+    /* ── Header ── */
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(255,255,255,0.96);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      box-shadow: 0 2px 12px rgba(26,95,122,0.07);
+    }
+
+    .header-inner {
+      max-width: 1160px;
+      margin: 0 auto;
+      padding: 0 24px;
+      height: 68px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+    }
+
+    .logo {
+      display: flex;
+      flex-direction: column;
+      line-height: 1.2;
+      text-decoration: none;
+    }
+    .logo-sub { font-size: 11px; color: var(--text-sub); letter-spacing: 0.08em; }
+    .logo-main {
+      font-family: 'Noto Serif JP', serif;
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--primary);
+      letter-spacing: 0.04em;
+    }
+
+    nav { display: flex; gap: 4px; }
+    nav a {
+      text-decoration: none;
+      font-size: 13.5px;
+      font-weight: 500;
+      color: var(--text-sub);
+      padding: 6px 12px;
+      border-radius: 8px;
+      transition: background .2s, color .2s;
+    }
+    nav a:hover { background: #e8f5f9; color: var(--primary); }
+
+    .header-tel {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      white-space: nowrap;
+    }
+    .header-tel span { font-size: 11px; color: var(--text-sub); }
+    .header-tel a {
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--primary);
+      text-decoration: none;
+      letter-spacing: 0.04em;
+    }
+
+    /* ── Hero ── */
+    .hero {
+      background: linear-gradient(135deg, #0d3b52 0%, #1a5f7a 45%, #159895 100%);
+      color: #fff;
+      padding: 100px 24px;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(circle at 80% 20%, rgba(87,197,182,0.25) 0%, transparent 50%),
+        radial-gradient(circle at 10% 80%, rgba(21,152,149,0.20) 0%, transparent 45%);
+    }
+    .hero-inner {
+      max-width: 1160px;
+      margin: 0 auto;
+      position: relative;
+      z-index: 1;
+    }
+    .hero-badge {
+      display: inline-block;
+      background: rgba(87,197,182,0.25);
+      border: 1px solid rgba(87,197,182,0.5);
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      padding: 5px 14px;
+      border-radius: 20px;
+      margin-bottom: 22px;
+      text-transform: uppercase;
+    }
+    .hero h1 {
+      font-family: 'Noto Serif JP', serif;
+      font-size: clamp(28px, 5vw, 54px);
+      font-weight: 600;
+      line-height: 1.4;
+      margin-bottom: 20px;
+      letter-spacing: 0.03em;
+    }
+    .hero h1 span { color: var(--accent); }
+    .hero p {
+      font-size: 16px;
+      color: rgba(255,255,255,0.80);
+      max-width: 520px;
+      margin-bottom: 36px;
+      line-height: 1.9;
+    }
+    .hero-btns { display: flex; gap: 14px; flex-wrap: wrap; }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 13px 28px;
+      border-radius: 50px;
+      font-size: 14.5px;
+      font-weight: 700;
+      text-decoration: none;
+      transition: transform .2s, box-shadow .2s;
+      cursor: pointer;
+      border: none;
+    }
+    .btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.18); }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-outline { background: transparent; border: 2px solid rgba(255,255,255,0.55); color: #fff; }
+    .btn-outline:hover { background: rgba(255,255,255,0.12); }
+
+    .hero-cards {
+      display: flex;
+      gap: 16px;
+      margin-top: 60px;
+      flex-wrap: wrap;
+    }
+    .hero-card {
+      background: rgba(255,255,255,0.10);
+      border: 1px solid rgba(255,255,255,0.20);
+      backdrop-filter: blur(8px);
+      border-radius: var(--radius);
+      padding: 20px 24px;
+      flex: 1 1 180px;
+      min-width: 160px;
+    }
+    .hero-card .num {
+      font-size: 32px;
+      font-weight: 700;
+      color: var(--accent);
+      line-height: 1;
+      margin-bottom: 6px;
+    }
+    .hero-card p { font-size: 12.5px; color: rgba(255,255,255,0.75); }
+
+    /* ── Section common ── */
+    section { padding: 80px 24px; }
+    .container { max-width: 1160px; margin: 0 auto; }
+    .section-label {
+      font-size: 11.5px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--accent2);
+      margin-bottom: 10px;
+    }
+    .section-title {
+      font-family: 'Noto Serif JP', serif;
+      font-size: clamp(22px, 3.5vw, 34px);
+      font-weight: 600;
+      color: var(--primary);
+      margin-bottom: 14px;
+      line-height: 1.4;
+    }
+    .section-desc {
+      font-size: 15px;
+      color: var(--text-sub);
+      max-width: 580px;
+      line-height: 1.85;
+      margin-bottom: 48px;
+    }
+
+    /* ── Features ── */
+    .features { background: var(--surface); }
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 24px;
+    }
+    .feature-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 32px 28px;
+      transition: transform .25s, box-shadow .25s;
+      position: relative;
+      overflow: hidden;
+    }
+    .feature-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--primary), var(--accent));
+      border-radius: 3px 3px 0 0;
+    }
+    .feature-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-lg); }
+    .feature-icon {
+      width: 52px; height: 52px;
+      border-radius: 14px;
+      background: linear-gradient(135deg, var(--primary), var(--accent2));
+      display: flex; align-items: center; justify-content: center;
+      font-size: 24px;
+      margin-bottom: 18px;
+    }
+    .feature-card h3 {
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--primary);
+      margin-bottom: 10px;
+    }
+    .feature-card p { font-size: 13.5px; color: var(--text-sub); line-height: 1.8; }
+
+    /* ── Dementia ── */
+    .dementia { background: linear-gradient(135deg, #f0f9fc 0%, #e8f5f9 100%); }
+    .dementia-inner {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 60px;
+      align-items: center;
+    }
+    .dementia-visual {
+      background: linear-gradient(135deg, var(--primary) 0%, var(--accent2) 100%);
+      border-radius: 20px;
+      padding: 48px 40px;
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .dementia-visual h3 {
+      font-family: 'Noto Serif JP', serif;
+      font-size: 22px;
+      font-weight: 600;
+      line-height: 1.5;
+    }
+    .dementia-steps { list-style: none; display: flex; flex-direction: column; gap: 12px; }
+    .dementia-steps li {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      font-size: 14px;
+      line-height: 1.7;
+      color: rgba(255,255,255,0.88);
+    }
+    .step-num {
+      width: 26px; height: 26px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.2);
+      border: 1px solid rgba(255,255,255,0.35);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px;
+      font-weight: 700;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+    .dementia-content .section-desc { margin-bottom: 28px; }
+    .tag-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+    .tag {
+      background: rgba(26,95,122,0.08);
+      color: var(--primary);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 5px 14px;
+      font-size: 12.5px;
+      font-weight: 500;
+    }
+
+    /* ── Hospitalization ── */
+    .hospitalization { background: var(--surface); }
+    .hosp-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 20px;
+    }
+    .hosp-item {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px 22px;
+      background: var(--bg);
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+    }
+    .hosp-icon {
+      font-size: 28px;
+      flex-shrink: 0;
+      width: 44px; height: 44px;
+      display: flex; align-items: center; justify-content: center;
+      background: #e8f5f9;
+      border-radius: 10px;
+    }
+    .hosp-item h4 { font-size: 14px; font-weight: 700; color: var(--primary); margin-bottom: 6px; }
+    .hosp-item p { font-size: 12.5px; color: var(--text-sub); line-height: 1.75; }
+
+    /* ── Recruit ── */
+    .recruit { background: linear-gradient(135deg, #0d3b52 0%, #1a5f7a 100%); color: #fff; }
+    .recruit .section-label { color: var(--accent); }
+    .recruit .section-title { color: #fff; }
+    .recruit .section-desc { color: rgba(255,255,255,0.72); }
+    .jobs-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 40px;
+    }
+    .job-card {
+      background: rgba(255,255,255,0.10);
+      border: 1px solid rgba(255,255,255,0.18);
+      border-radius: var(--radius);
+      padding: 22px 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .job-icon { font-size: 24px; }
+    .job-card span { font-size: 14px; font-weight: 600; }
+    .recruit-contact {
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.18);
+      border-radius: var(--radius);
+      padding: 28px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 20px;
+    }
+    .recruit-contact p { font-size: 14px; color: rgba(255,255,255,0.75); margin-bottom: 4px; }
+    .recruit-contact .tel {
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: 0.04em;
+    }
+    .recruit-contact .person { font-size: 13px; color: rgba(255,255,255,0.60); }
+
+    /* ── Related ── */
+    .related { background: var(--bg); }
+    .related-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 20px;
+    }
+    .related-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px 22px;
+      text-decoration: none;
+      color: inherit;
+      transition: transform .2s, box-shadow .2s, border-color .2s;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .related-card:hover {
+      transform: translateY(-3px);
+      box-shadow: var(--shadow);
+      border-color: var(--accent);
+    }
+    .related-card .r-icon { font-size: 28px; margin-bottom: 6px; }
+    .related-card h4 { font-size: 15px; font-weight: 700; color: var(--primary); }
+    .related-card p { font-size: 12.5px; color: var(--text-sub); line-height: 1.7; }
+    .related-card .r-link {
+      font-size: 12px;
+      color: var(--accent2);
+      font-weight: 600;
+      margin-top: 6px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    /* ── Contact ── */
+    .contact { background: var(--surface); }
+    .contact-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 40px;
+      align-items: start;
+    }
+    .contact-info { display: flex; flex-direction: column; gap: 20px; }
+    .info-row {
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+      padding: 20px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+    }
+    .info-icon {
+      width: 40px; height: 40px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, var(--primary), var(--accent2));
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+      flex-shrink: 0;
+    }
+    .info-row h4 { font-size: 13px; color: var(--text-sub); margin-bottom: 4px; }
+    .info-row p { font-size: 15px; font-weight: 600; color: var(--text); }
+    .info-row a { color: var(--primary); text-decoration: none; }
+    .map-placeholder {
+      background: linear-gradient(135deg, #e8f5f9, #d6eef5);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      height: 340px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      color: var(--text-sub);
+    }
+    .map-placeholder span { font-size: 48px; }
+    .map-placeholder p { font-size: 14px; font-weight: 500; }
+    .map-placeholder a {
+      font-size: 13px;
+      color: var(--accent2);
+      font-weight: 600;
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    /* ── Footer ── */
+    footer {
+      background: #0d2f3f;
+      color: rgba(255,255,255,0.70);
+      padding: 48px 24px 28px;
+    }
+    .footer-inner {
+      max-width: 1160px;
+      margin: 0 auto;
+    }
+    .footer-top {
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 32px;
+      margin-bottom: 40px;
+    }
+    .footer-brand .logo-main { color: #fff; font-size: 20px; }
+    .footer-brand .logo-sub { color: rgba(255,255,255,0.50); }
+    .footer-brand p {
+      font-size: 13px;
+      color: rgba(255,255,255,0.55);
+      line-height: 1.8;
+      margin-top: 12px;
+      max-width: 260px;
+    }
+    .footer-links h5 { font-size: 13px; font-weight: 700; color: rgba(255,255,255,0.85); margin-bottom: 14px; }
+    .footer-links ul { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+    .footer-links li a {
+      font-size: 13px;
+      color: rgba(255,255,255,0.55);
+      text-decoration: none;
+      transition: color .2s;
+    }
+    .footer-links li a:hover { color: var(--accent); }
+    .footer-bottom {
+      border-top: 1px solid rgba(255,255,255,0.10);
+      padding-top: 20px;
+      font-size: 12px;
+      color: rgba(255,255,255,0.35);
+      text-align: center;
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 768px) {
+      nav { display: none; }
+      .dementia-inner { grid-template-columns: 1fr; }
+      .contact-grid { grid-template-columns: 1fr; }
+      .recruit-contact { flex-direction: column; }
+      .footer-top { flex-direction: column; }
+      .header-tel { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Header ── -->
+<header>
+  <div class="header-inner">
+    <a class="logo" href="#">
+      <span class="logo-sub">医療法人タピック</span>
+      <span class="logo-main">宮里病院</span>
+    </a>
+    <nav>
+      <a href="#features">診療案内</a>
+      <a href="#dementia">認知症センター</a>
+      <a href="#hospitalization">入院案内</a>
+      <a href="#recruit">採用情報</a>
+      <a href="#related">関連施設</a>
+      <a href="#contact">お問い合わせ</a>
+    </nav>
+    <div class="header-tel">
+      <span>ご予約・お問い合わせ</span>
+      <a href="tel:0570017771">0570-01-7771</a>
+    </div>
+  </div>
+</header>
+
+<!-- ── Hero ── -->
+<section class="hero">
+  <div class="hero-inner">
+    <div class="hero-badge">Tapic Miyazato Hospital</div>
+    <h1>
+      脳と心、そして認知症の<br />
+      <span>専門病院</span>として。
+    </h1>
+    <p>
+      沖縄県名護市「やんばる」の地に根ざし、<br />
+      最先端の医療機器と総合的なリハビリテーションで<br />
+      地域の皆さまの健康を支えています。
+    </p>
+    <div class="hero-btns">
+      <a class="btn btn-primary" href="#dementia">認知症疾患医療センター</a>
+      <a class="btn btn-outline" href="#contact">お問い合わせ</a>
+    </div>
+    <div class="hero-cards">
+      <div class="hero-card">
+        <div class="num">MRI</div>
+        <p>最先端の<br />画像診断設備</p>
+      </div>
+      <div class="hero-card">
+        <div class="num">SPECT</div>
+        <p>認知症の<br />精密検査</p>
+      </div>
+      <div class="hero-card">
+        <div class="num">Rehab</div>
+        <p>総合的な<br />リハビリ</p>
+      </div>
+      <div class="hero-card">
+        <div class="num">24h</div>
+        <p>安心の<br />入院体制</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Features ── -->
+<section class="features" id="features">
+  <div class="container">
+    <p class="section-label">Our Services</p>
+    <h2 class="section-title">診療・サービスのご案内</h2>
+    <p class="section-desc">
+      精神科・神経科を中心に、脳と心の病気を幅広く診療しています。
+      地域医療の充実を目指し、専門スタッフが連携してケアにあたります。
+    </p>
+    <div class="features-grid">
+      <div class="feature-card">
+        <div class="feature-icon">🧠</div>
+        <h3>精神科・神経科</h3>
+        <p>うつ病、統合失調症、不安障害など、こころの病気全般について、専門医が丁寧に診療します。</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🔬</div>
+        <h3>認知症専門診療</h3>
+        <p>早期発見・早期治療を重視。MRI・SPECT検査を活用し、的確な診断と治療方針をご提案します。</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🏃</div>
+        <h3>リハビリテーション</h3>
+        <p>理学療法・作業療法・言語聴覚療法を組み合わせた総合的なリハビリプログラムを提供します。</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🏥</div>
+        <h3>入院・療養</h3>
+        <p>急性期から慢性期・介護療養まで、患者さまの状態に合わせた病棟で安心してお過ごしいただけます。</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">👨‍👩‍👧</div>
+        <h3>家族支援</h3>
+        <p>患者さまだけでなく、ご家族の不安や悩みにも寄り添い、社会福祉士・精神保健福祉士がサポートします。</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🌿</div>
+        <h3>地域連携</h3>
+        <p>やんばる地域の医療・介護機関と密に連携し、退院後の生活もしっかり支援します。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Dementia ── -->
+<section class="dementia" id="dementia">
+  <div class="container">
+    <div class="dementia-inner">
+      <div class="dementia-visual">
+        <div class="section-label" style="color:var(--accent);">Dementia Care Center</div>
+        <h3>認知症疾患<br />医療センター</h3>
+        <ul class="dementia-steps">
+          <li>
+            <span class="step-num">1</span>
+            <span>ご本人・ご家族からの<br />相談受け付け</span>
+          </li>
+          <li>
+            <span class="step-num">2</span>
+            <span>MRI・SPECT等による<br />精密検査・診断</span>
+          </li>
+          <li>
+            <span class="step-num">3</span>
+            <span>適切な治療方針の決定と<br />医療機関・介護への繋ぎ</span>
+          </li>
+          <li>
+            <span class="step-num">4</span>
+            <span>継続的な支援・<br />フォローアップ</span>
+          </li>
+        </ul>
+      </div>
+      <div class="dementia-content">
+        <p class="section-label">Dementia Care</p>
+        <h2 class="section-title">認知症の<br />早期発見・早期治療</h2>
+        <p class="section-desc">
+          認知症疾患医療センターでは、認知症の早期発見・早期治療を重視しています。
+          適切な診断・治療へ繋げることにより、その人らしい生活を送ることができるよう、
+          ご本人やご家族を支援しています。
+        </p>
+        <p style="font-size:14px; color:var(--text-sub); line-height:1.9;">
+          「もの忘れが増えた」「同じことを何度も聞く」「道に迷うようになった」
+          など、気になる症状がある場合はお気軽にご相談ください。
+          必要に応じてMRI・SPECTなどの検査も行います。
+        </p>
+        <div class="tag-list">
+          <span class="tag">アルツハイマー型認知症</span>
+          <span class="tag">レビー小体型認知症</span>
+          <span class="tag">血管性認知症</span>
+          <span class="tag">前頭側頭型認知症</span>
+          <span class="tag">MCI（軽度認知障害）</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Hospitalization ── -->
+<section class="hospitalization" id="hospitalization">
+  <div class="container">
+    <p class="section-label">Hospitalization</p>
+    <h2 class="section-title">入院のご案内</h2>
+    <p class="section-desc">
+      入院に必要な書類や持ち物をご確認ください。ご不明な点はお気軽にお問い合わせください。
+    </p>
+    <div class="hosp-grid">
+      <div class="hosp-item">
+        <div class="hosp-icon">🪪</div>
+        <div>
+          <h4>保険証・マイナンバーカード</h4>
+          <p>健康保険被保険者証またはマイナンバーカードをご持参ください。</p>
+        </div>
+      </div>
+      <div class="hosp-item">
+        <div class="hosp-icon">📝</div>
+        <div>
+          <h4>入院保証書・印鑑</h4>
+          <p>入院保証書に必要事項をご記入の上、印鑑と合わせてご提出ください。</p>
+        </div>
+      </div>
+      <div class="hosp-item">
+        <div class="hosp-icon">👔</div>
+        <div>
+          <h4>レンタル病衣</h4>
+          <p>介護療養病棟ではレンタル病衣をご利用いただけます。（1日132円）</p>
+        </div>
+      </div>
+      <div class="hosp-item">
+        <div class="hosp-icon">🛏</div>
+        <div>
+          <h4>療養環境</h4>
+          <p>患者さまが安心して療養できるよう、清潔で快適な療養環境を整えています。</p>
+        </div>
+      </div>
+      <div class="hosp-item">
+        <div class="hosp-icon">💊</div>
+        <div>
+          <h4>お薬手帳</h4>
+          <p>現在お飲みのお薬がある場合は、お薬手帳または処方箋をお持ちください。</p>
+        </div>
+      </div>
+      <div class="hosp-item">
+        <div class="hosp-icon">📞</div>
+        <div>
+          <h4>入院に関するお問い合わせ</h4>
+          <p>入院前のご相談やご不明な点は、お電話またはお問い合わせフォームにてご連絡ください。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Recruit ── -->
+<section class="recruit" id="recruit">
+  <div class="container">
+    <p class="section-label">Join Our Team</p>
+    <h2 class="section-title">職員募集</h2>
+    <p class="section-desc">
+      患者さまの「その人らしい生活」を一緒に支えてくださる仲間を募集しています。
+      専門性を活かし、地域医療に貢献しませんか。
+    </p>
+    <div class="jobs-grid">
+      <div class="job-card">
+        <span class="job-icon">💊</span>
+        <span>薬剤師</span>
+      </div>
+      <div class="job-card">
+        <span class="job-icon">🗣</span>
+        <span>言語聴覚士</span>
+      </div>
+      <div class="job-card">
+        <span class="job-icon">🤝</span>
+        <span>社会福祉士</span>
+      </div>
+      <div class="job-card">
+        <span class="job-icon">🧩</span>
+        <span>精神保健福祉士</span>
+      </div>
+      <div class="job-card">
+        <span class="job-icon">🩺</span>
+        <span>看護師</span>
+      </div>
+      <div class="job-card">
+        <span class="job-icon">🏋️</span>
+        <span>理学療法士・作業療法士</span>
+      </div>
+    </div>
+    <div class="recruit-contact">
+      <div>
+        <p>採用に関するお問い合わせ</p>
+        <div class="tel">0980-52-7756</div>
+        <div class="person">担当：管理部 新城・大城</div>
+      </div>
+      <a class="btn btn-primary" href="#contact">お問い合わせフォーム →</a>
+    </div>
+  </div>
+</section>
+
+<!-- ── Related ── -->
+<section class="related" id="related">
+  <div class="container">
+    <p class="section-label">Related Facilities</p>
+    <h2 class="section-title">関連施設</h2>
+    <p class="section-desc">
+      医療法人タピックは沖縄県内に複数の関連施設を展開し、地域包括ケアを支えています。
+    </p>
+    <div class="related-grid">
+      <a class="related-card" href="https://tapic-reha.or.jp" target="_blank" rel="noopener">
+        <span class="r-icon">🏥</span>
+        <h4>タピックリハ病院</h4>
+        <p>沖縄市比屋根<br />リハビリテーション専門病院</p>
+        <span class="r-link">tapic-reha.or.jp →</span>
+      </a>
+      <a class="related-card" href="https://tapic-kamenosato.jp" target="_blank" rel="noopener">
+        <span class="r-icon">🏡</span>
+        <h4>タピック亀の里</h4>
+        <p>沖縄市比屋根<br />介護老人保健施設</p>
+        <span class="r-link">tapic-kamenosato.jp →</span>
+      </a>
+      <a class="related-card" href="https://yuinchi.jp" target="_blank" rel="noopener">
+        <span class="r-icon">🌺</span>
+        <h4>ゆいんち</h4>
+        <p>南城市佐敷<br />介護・福祉サービス</p>
+        <span class="r-link">yuinchi.jp →</span>
+      </a>
+      <a class="related-card" href="https://peare-okinawa.gr.jp" target="_blank" rel="noopener">
+        <span class="r-icon">🤲</span>
+        <h4>ぺあれ沖縄</h4>
+        <p>沖縄市松本<br />グループホーム・福祉サービス</p>
+        <span class="r-link">peare-okinawa.gr.jp →</span>
+      </a>
+      <div class="related-card" style="cursor:default;">
+        <span class="r-icon">☀</span>
+        <h4>デイサービスあわせ</h4>
+        <p>沖縄市泡瀬<br />通所介護サービス</p>
+      </div>
+      <div class="related-card" style="cursor:default;">
+        <span class="r-icon">🏠</span>
+        <h4>あわせヘルパーステーション</h4>
+        <p>沖縄市泡瀬<br />訪問介護サービス</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Contact ── -->
+<section class="contact" id="contact">
+  <div class="container">
+    <p class="section-label">Contact</p>
+    <h2 class="section-title">お問い合わせ・アクセス</h2>
+    <p class="section-desc">
+      診療・入院・採用に関するご相談は、お気軽にお問い合わせください。
+    </p>
+    <div class="contact-grid">
+      <div class="contact-info">
+        <div class="info-row">
+          <div class="info-icon">📍</div>
+          <div>
+            <h4>所在地</h4>
+            <p>〒905-0006<br />沖縄県名護市字宇茂佐1763-2</p>
+          </div>
+        </div>
+        <div class="info-row">
+          <div class="info-icon">📞</div>
+          <div>
+            <h4>代表電話</h4>
+            <p><a href="tel:0570017771">0570-01-7771</a></p>
+          </div>
+        </div>
+        <div class="info-row">
+          <div class="info-icon">📠</div>
+          <div>
+            <h4>FAX</h4>
+            <p>0980-53-6976</p>
+          </div>
+        </div>
+        <div class="info-row">
+          <div class="info-icon">👥</div>
+          <div>
+            <h4>採用直通</h4>
+            <p><a href="tel:0980527756">0980-52-7756</a><br />
+            <span style="font-size:13px; color:var(--text-sub);">担当：管理部 新城・大城</span></p>
+          </div>
+        </div>
+      </div>
+      <div class="map-placeholder">
+        <span>🗺️</span>
+        <p>沖縄県名護市字宇茂佐1763-2</p>
+        <a href="https://maps.google.com/?q=沖縄県名護市字宇茂佐1763-2" target="_blank" rel="noopener">
+          Google マップで見る →
+        </a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Footer ── -->
+<footer>
+  <div class="footer-inner">
+    <div class="footer-top">
+      <div class="footer-brand">
+        <a class="logo" href="#">
+          <span class="logo-sub">医療法人タピック</span>
+          <span class="logo-main">宮里病院</span>
+        </a>
+        <p>
+          沖縄県名護市「やんばる」の地で、脳と心・認知症の専門医療と
+          総合的なリハビリテーションを提供しています。
+        </p>
+      </div>
+      <div class="footer-links">
+        <h5>診療案内</h5>
+        <ul>
+          <li><a href="#features">診療科目</a></li>
+          <li><a href="#dementia">認知症疾患医療センター</a></li>
+          <li><a href="#hospitalization">入院のご案内</a></li>
+        </ul>
+      </div>
+      <div class="footer-links">
+        <h5>病院情報</h5>
+        <ul>
+          <li><a href="#recruit">職員募集</a></li>
+          <li><a href="#related">関連施設</a></li>
+          <li><a href="#contact">お問い合わせ・アクセス</a></li>
+        </ul>
+      </div>
+      <div class="footer-links">
+        <h5>関連施設</h5>
+        <ul>
+          <li><a href="https://tapic-reha.or.jp" target="_blank" rel="noopener">タピックリハ病院</a></li>
+          <li><a href="https://tapic-kamenosato.jp" target="_blank" rel="noopener">タピック亀の里</a></li>
+          <li><a href="https://yuinchi.jp" target="_blank" rel="noopener">ゆいんち</a></li>
+          <li><a href="https://peare-okinawa.gr.jp" target="_blank" rel="noopener">ぺあれ沖縄</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      &copy; 医療法人タピック 宮里病院. All rights reserved.
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
