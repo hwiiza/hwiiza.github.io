@@ -1,12 +1,14 @@
 // ==UserScript==
 // @name         Suno Creator
 // @namespace    hwiiza.suno
-// @version      0.1.10
-// @description  SunoのCreate画面にパネルを表示し、JSON(1曲/配列)から曲を生成・連続生成。ファイル選択/ドラッグ&ドロップ対応。
+// @version      0.2.0
+// @description  SunoのCreate画面にパネルを表示し、JSON(1曲/配列)から曲を生成・連続生成。曲のMP3一括/個別ダウンロードも対応。
 // @match        https://suno.com/*
 // @match        https://www.suno.com/*
 // @run-at       document-idle
-// @grant        none
+// @grant        GM_xmlhttpRequest
+// @connect      cdn1.suno.ai
+// @connect      suno.ai
 // @homepageURL  https://github.com/hwiiza/suno-creator
 // @supportURL   https://github.com/hwiiza/suno-creator/issues
 // @downloadURL  https://hwiiza.github.io/suno-creator.user.js
@@ -207,8 +209,17 @@
         white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
       #${PANEL_ID} .log{flex-shrink:0;height:74px;overflow:auto;background:#0b0b0d;border:1px solid #2e2e34;border-radius:7px;
         padding:6px 8px;font-family:Consolas,monospace;font-size:11px;color:#8a8a90;white-space:pre-wrap;}
+      #${PANEL_ID} .tab{background:transparent;border:1px solid #2e2e34;color:#8a8a90;border-radius:999px;padding:3px 12px;font-size:12px;}
+      #${PANEL_ID} .tab.active{background:#252529;color:#f7f4ef;}
+      #${PANEL_ID} .view{flex:1;display:flex;flex-direction:column;min-height:0;gap:10px;}
+      #${PANEL_ID} .dllist{flex:1;max-height:none;}
+      #${PANEL_ID} .bdg.downloading{color:#9ec5ff;border-color:#2a4a6b;}
+      #${PANEL_ID} .bdg.done{color:#8fe3b0;border-color:#2a5a42;}
     </style>
-    <div class="hd"><b>Suno Creator</b><span style="flex:1"></span>
+    <div class="hd"><b>Suno Creator</b>
+      <button id="sc-tab-create" class="tab active">作成</button>
+      <button id="sc-tab-dl" class="tab">DL</button>
+      <span style="flex:1"></span>
       <button id="sc-gear" class="x" title="設定">⚙</button>
       <button id="sc-x" class="x" title="閉じる">×</button></div>
     <div id="sc-settings" class="settings" style="display:none;">
@@ -216,17 +227,29 @@
       <div class="cnt" style="margin-top:5px;">Premier: 同時生成は最大${MAX_CONCURRENT}曲。超過分は枠が空くまで待機して投入。</div>
     </div>
     <div class="bd">
-      <div class="row">
-        <button id="sc-file">ファイル読込</button>
-        <span style="flex:1"></span>
-        <button id="sc-run" class="primary">連続生成（全部）</button>
+      <div id="sc-view-create" class="view">
+        <div class="row">
+          <button id="sc-file">ファイル読込</button>
+          <span style="flex:1"></span>
+          <button id="sc-run" class="primary">連続生成（全部）</button>
+        </div>
+        <div class="seclabel">📋 曲リスト <span class="cnt" id="sc-count">0曲</span></div>
+        <div class="list" id="sc-list"><div class="empty">「ファイル読込」でJSON(1曲/配列)を選択</div></div>
+        <div class="seclabel">⚙ 詳細（選択中の曲）</div>
+        <div class="detail" id="sc-detail"><div class="ph">↑ リストから曲を選択すると内容を表示</div></div>
+        <input id="sc-fileinput" type="file" accept=".json,application/json" style="display:none" />
       </div>
-      <div class="seclabel">📋 曲リスト <span class="cnt" id="sc-count">0曲</span></div>
-      <div class="list" id="sc-list"><div class="empty">「ファイル読込」でJSON(1曲/配列)を選択</div></div>
-      <div class="seclabel">⚙ 詳細（選択中の曲）</div>
-      <div class="detail" id="sc-detail"><div class="ph">↑ リストから曲を選択すると内容を表示</div></div>
-      <input id="sc-fileinput" type="file" accept=".json,application/json" style="display:none" />
-      <div class="log" id="sc-log">JSONを読み込み（ファイル選択 or ドラッグ&ドロップ）→曲を選んで内容確認→「連続生成（全部）」または各曲を生成。</div>
+      <div id="sc-view-dl" class="view" style="display:none;">
+        <div class="row">
+          <button id="sc-lib">ライブラリ読込</button>
+          <span style="flex:1"></span>
+          <button id="sc-dlsel" class="primary">選択をDL</button>
+        </div>
+        <div class="seclabel">⬇ ダウンロード <span class="cnt" id="sc-libcount">0曲</span><span class="cnt"> ・MP3→DLフォルダ</span></div>
+        <label class="cnt" style="display:flex;align-items:center;gap:6px;cursor:pointer;margin:-2px 0;"><input type="checkbox" id="sc-dlall" style="width:14px;height:14px;accent-color:#f7f4ef;"> 全選択</label>
+        <div class="list dllist" id="sc-dllist"><div class="empty">「ライブラリ読込」でワークスペースの曲一覧を取得</div></div>
+      </div>
+      <div class="log" id="sc-log">JSONを読み込み→「連続生成（全部）」/ 個別生成。「DL」タブで曲のMP3を一括/個別ダウンロード。</div>
     </div>
     <div id="sc-dz" class="dz">📂 JSONをドロップして読み込み</div>`;
     document.body.appendChild(panel);
@@ -405,6 +428,132 @@
         log('✅ 完了（Suno側で生成中）');
       } catch (e) { log('✖ ' + e.message); }
       finally { busy = false; $('#sc-run').disabled = false; }
+    });
+
+    // ===== タブ切替 =====
+    function showTab(which) {
+      const c = which === 'create';
+      $('#sc-tab-create').classList.toggle('active', c);
+      $('#sc-tab-dl').classList.toggle('active', !c);
+      $('#sc-view-create').style.display = c ? 'flex' : 'none';
+      $('#sc-view-dl').style.display = c ? 'none' : 'flex';
+    }
+    $('#sc-tab-create').addEventListener('click', () => showTab('create'));
+    $('#sc-tab-dl').addEventListener('click', () => showTab('dl'));
+
+    // ===== ダウンロード（曲のMP3） =====
+    let clips = [], dlChecked = [], dlStatus = [];
+    const DLBADGE = { downloading: 'DL中', done: '完了', failed: '失敗' };
+    const sanitize = (n) => (n || 'untitled').replace(/[\\/:*?"<>|]/g, '_').replace(/\s+/g, ' ').trim().slice(0, 100) || 'untitled';
+
+    // ワークスペース(仮想スクロール)を下まで送りながら曲を全件収集
+    async function scrapeLibrary() {
+      const map = new Map();
+      const grab = () => {
+        document.querySelectorAll('a[href*="/song/"]').forEach((a) => {
+          const m = (a.getAttribute('href') || '').match(/\/song\/([0-9a-f-]{36})/i);
+          if (!m) return; const id = m[1]; if (map.has(id)) return;
+          let title = (a.getAttribute('title') || a.innerText || '').trim();
+          if (!title) { let cur = a; for (let u = 0; u < 4 && cur && !title; u++) { cur = cur.parentElement; if (cur) { const t = cur.querySelector('[title]'); if (t) title = (t.getAttribute('title') || t.innerText || '').trim(); } } }
+          map.set(id, { id, title: title.slice(0, 80) });
+        });
+      };
+      grab();
+      const sc = document.querySelector('.clip-browser-list-scroller');
+      if (sc) {
+        let stale = 0;
+        for (let i = 0; i < 250 && stale < 4; i++) {
+          const before = map.size;
+          sc.scrollTop = Math.min(sc.scrollHeight, sc.scrollTop + sc.clientHeight * 0.85);
+          await sleep(450);
+          grab();
+          const bottom = sc.scrollTop + sc.clientHeight >= sc.scrollHeight - 5;
+          if (map.size === before) stale++; else stale = 0;
+          if (bottom && map.size === before) break;
+        }
+      }
+      return [...map.values()];
+    }
+
+    function renderDlList() {
+      const n = dlChecked.filter(Boolean).length;
+      $('#sc-libcount').textContent = clips.length + '曲' + (n ? '／選択' + n : '');
+      $('#sc-dlall').checked = clips.length > 0 && n === clips.length;
+      const el = $('#sc-dllist');
+      if (!clips.length) { el.innerHTML = '<div class="empty">「ライブラリ読込」でワークスペースの曲一覧を取得</div>'; return; }
+      el.innerHTML = '';
+      clips.forEach((c, i) => {
+        const st = dlStatus[i] || '';
+        const it = document.createElement('div');
+        it.className = 'item';
+        it.innerHTML =
+          '<input type="checkbox" data-chk="' + i + '"' + (dlChecked[i] ? ' checked' : '') + ' style="width:14px;height:14px;accent-color:#f7f4ef;">' +
+          '<span class="ix">' + (i + 1) + '</span>' +
+          '<div class="mt"><div class="t"></div><div class="s">' + c.id.slice(0, 8) + '</div></div>' +
+          (st ? '<span class="bdg ' + st + '">' + (DLBADGE[st] || st) + '</span>' : '') +
+          '<button data-dl="' + i + '" style="padding:3px 10px;">DL</button>';
+        it.querySelector('.t').textContent = c.title || '(無題)';
+        it.querySelector('[data-chk]').addEventListener('change', (e) => { dlChecked[i] = e.target.checked; renderDlList(); });
+        it.querySelector('[data-dl]').addEventListener('click', () => downloadIdx([i]));
+        el.appendChild(it);
+      });
+    }
+
+    // CDN直リンクをGM_xmlhttpRequestでblob取得→<a download>で保存(CORS回避)
+    function fetchAndSave(id, filename) {
+      return new Promise((resolve, reject) => {
+        GM_xmlhttpRequest({
+          method: 'GET', url: 'https://cdn1.suno.ai/' + id + '.mp3', responseType: 'blob',
+          onload: (r) => {
+            if (r.status !== 200) { reject(new Error('HTTP ' + r.status)); return; }
+            const url = URL.createObjectURL(r.response);
+            const a = document.createElement('a'); a.href = url; a.download = filename;
+            document.body.appendChild(a); a.click(); a.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 15000);
+            resolve();
+          },
+          onerror: () => reject(new Error('network')), ontimeout: () => reject(new Error('timeout')),
+        });
+      });
+    }
+
+    async function downloadIdx(indices) {
+      if (busy) return;
+      const list = indices.filter((i) => clips[i]);
+      if (!list.length) return;
+      busy = true; $('#sc-dlsel').disabled = true; $('#sc-lib').disabled = true;
+      const used = new Set();
+      log('— DL ' + list.length + '曲 → ダウンロードフォルダ —');
+      for (const i of list) {
+        const c = clips[i];
+        let base = sanitize(c.title || c.id), name = base + '.mp3', k = 2;
+        while (used.has(name.toLowerCase())) name = base + ' (' + (k++) + ').mp3';
+        used.add(name.toLowerCase());
+        dlStatus[i] = 'downloading'; renderDlList();
+        try { await fetchAndSave(c.id, name); dlStatus[i] = 'done'; log('  ✅ ' + name); }
+        catch (e) { dlStatus[i] = 'failed'; log('  ✖ ' + name + ' — ' + e.message); }
+        renderDlList();
+        await sleep(400);
+      }
+      busy = false; $('#sc-dlsel').disabled = false; $('#sc-lib').disabled = false;
+      log('✅ DL完了');
+    }
+
+    $('#sc-lib').addEventListener('click', async () => {
+      if (busy) return;
+      busy = true; $('#sc-lib').disabled = true; log('ライブラリ読込中...');
+      try {
+        clips = await scrapeLibrary();
+        dlChecked = clips.map(() => true); dlStatus = clips.map(() => '');
+        renderDlList(); log('📚 ' + clips.length + '曲 取得');
+      } catch (e) { log('✖ ' + e.message); }
+      finally { busy = false; $('#sc-lib').disabled = false; }
+    });
+    $('#sc-dlall').addEventListener('change', (e) => { dlChecked = clips.map(() => e.target.checked); renderDlList(); });
+    $('#sc-dlsel').addEventListener('click', () => {
+      const idx = clips.map((_, i) => i).filter((i) => dlChecked[i]);
+      if (!idx.length) { log('DLする曲が選択されていません'); return; }
+      downloadIdx(idx);
     });
 
     console.log('[Suno Creator] ready');
