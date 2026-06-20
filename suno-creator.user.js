@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Suno Creator
 // @namespace    hwiiza.suno
-// @version      0.2.0
+// @version      0.2.1
 // @description  SunoのCreate画面にパネルを表示し、JSON(1曲/配列)から曲を生成・連続生成。曲のMP3一括/個別ダウンロードも対応。
 // @match        https://suno.com/*
 // @match        https://www.suno.com/*
@@ -471,6 +471,8 @@
           if (map.size === before) stale++; else stale = 0;
           if (bottom && map.size === before) break;
         }
+        sc.scrollTop = 0;          // 収集後は先頭へ戻す
+        await sleep(150);
       }
       return [...map.values()];
     }
