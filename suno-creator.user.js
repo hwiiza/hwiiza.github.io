@@ -1,0 +1,416 @@
+// ==UserScript==
+// @name         Suno Creator
+// @namespace    hwiiza.suno
+// @version      0.1.10
+// @description  SunoのCreate画面にパネルを表示し、JSON(1曲/配列)から曲を生成・連続生成。ファイル選択/ドラッグ&ドロップ対応。
+// @match        https://suno.com/*
+// @match        https://www.suno.com/*
+// @run-at       document-idle
+// @grant        none
+// @homepageURL  https://github.com/hwiiza/suno-creator
+// @supportURL   https://github.com/hwiiza/suno-creator/issues
+// @downloadURL  https://hwiiza.github.io/suno-creator.user.js
+// @updateURL    https://hwiiza.github.io/suno-creator.user.js
+// ==/UserScript==
+
+(function () {
+  'use strict';
+
+  const MAX_CONCURRENT = 10;  // Premier: 同時生成は最大10曲(=20バリアント)
+  const INFLIGHT_SEC = 240;   // 生成中とみなす推定時間(枠の概算。完了検知が無いため時間ベース)
+  const WAIT_KEY = 'sunoCreator.waitSeconds';
+  const getWait = () => { const v = parseInt(localStorage.getItem(WAIT_KEY) || '', 10); return Number.isFinite(v) && v >= 0 ? v : 60; };
+  const setWait = (v) => localStorage.setItem(WAIT_KEY, String(v));
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  // ---- DOMユーティリティ ----
+  const isVisible = (el) => !!(el && el.getClientRects().length && el.offsetParent !== null);
+  function firstVisible(selector) {
+    for (const el of document.querySelectorAll(selector)) if (isVisible(el)) return el;
+    return null;
+  }
+  function byText(tag, text) {
+    for (const el of document.querySelectorAll(tag)) {
+      if ((el.textContent || '').trim() === text && isVisible(el)) return el;
+    }
+    return null;
+  }
+  // React制御の input/textarea に値を入れる(nativeセッター + inputイベント)
+  function setNativeValue(el, value) {
+    const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+    Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, value);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  // ---- Suno UI 操作 ----
+  function ensureAdvanced() { const adv = byText('button', 'Advanced'); if (adv) adv.click(); }
+  function ensureMoreOptions() {
+    if (firstVisible('[role="slider"][aria-label="Weirdness"]')) return;
+    const mo = byText('div', 'More Options') || byText('button', 'More Options');
+    if (mo) mo.click();
+  }
+  function getLyrics() { return firstVisible('textarea[data-testid="lyrics-textarea"]'); }
+  function getStyle() { for (const t of document.querySelectorAll('textarea:not([data-testid="lyrics-textarea"])')) if (isVisible(t)) return t; return null; }
+  function getTitle() { return firstVisible('input[placeholder="Song Title (Optional)"]'); }
+  function getCreate() { return firstVisible('button[aria-label="Create song"]') || byText('button', 'Create'); }
+  function setVocal(gender) {
+    const label = gender === 'female' ? 'Female' : gender === 'male' ? 'Male' : null;
+    if (!label) return;
+    const btn = byText('button', label);
+    if (btn && btn.getAttribute('data-selected') !== 'true') btn.click();
+  }
+  // カスタムスライダー(role=slider)を矢印キーで目標値へ。keyCode必須＋各押下に小休止。
+  async function setSlider(ariaLabel, target) {
+    const s = firstVisible(`[role="slider"][aria-label="${ariaLabel}"]`);
+    if (!s) return false;
+    target = Math.max(0, Math.min(100, Math.round(target)));
+    s.focus();
+    for (let k = 0; k < 220; k++) {
+      const now = Number(s.getAttribute('aria-valuenow'));
+      if (Number.isNaN(now) || now === target) break;
+      const right = now < target;
+      s.dispatchEvent(new KeyboardEvent('keydown', { key: right ? 'ArrowRight' : 'ArrowLeft', code: right ? 'ArrowRight' : 'ArrowLeft', keyCode: right ? 39 : 37, which: right ? 39 : 37, bubbles: true, cancelable: true }));
+      await sleep(32);
+      if (Number(s.getAttribute('aria-valuenow')) === now) break; // これ以上動かなければ終了
+    }
+    return Number(s.getAttribute('aria-valuenow')) === target;
+  }
+
+  async function fillSong(song, log) {
+    ensureAdvanced();
+    await sleep(800);
+    if (song.instrumental) {
+      const inst = firstVisible('button[aria-label*="instrumental only" i]') || byText('button', 'Instrumental');
+      if (inst && inst.getAttribute('data-selected') !== 'true') inst.click();
+      await sleep(300);
+    } else if (song.lyrics) {
+      const lyr = getLyrics();
+      if (lyr) setNativeValue(lyr, song.lyrics); else log('⚠ 歌詞欄が見つからない');
+    }
+    if (song.style) { const st = getStyle(); if (st) setNativeValue(st, song.style); else log('⚠ スタイル欄が見つからない'); }
+    if (song.title) { const ti = getTitle(); if (ti) setNativeValue(ti, song.title); }
+    const needMore = song.exclude || (song.vocal && song.vocal !== 'auto') || song.weirdness != null || song.styleInfluence != null;
+    if (needMore) {
+      ensureMoreOptions();
+      await sleep(500);
+      if (song.exclude) { const ex = firstVisible('input[placeholder="Exclude styles"]'); if (ex) setNativeValue(ex, song.exclude); }
+      if (song.vocal && song.vocal !== 'auto') setVocal(song.vocal);
+      if (song.weirdness != null && !(await setSlider('Weirdness', Number(song.weirdness)))) log('⚠ Weirdness設定に失敗');
+      if (song.styleInfluence != null && !(await setSlider('Style Influence', Number(song.styleInfluence)))) log('⚠ Style Influence設定に失敗');
+    }
+  }
+
+  function validate(s) {
+    if (!s || typeof s !== 'object') return 'オブジェクトではありません';
+    if (!(s.style || s.lyrics || s.instrumental)) return 'style/lyrics/instrumental のいずれか必須';
+    if (s.vocal && !['male', 'female', 'auto'].includes(s.vocal)) return 'vocal は male|female|auto';
+    return null;
+  }
+
+  async function generateOne(song, log) {
+    await fillSong(song, log);
+    await sleep(400);
+    const btn = getCreate();
+    if (!btn) { log('✖ 生成ボタンが見つからない'); return false; }
+    btn.click();
+    log('  ✅ 投入: ' + (song.title || song.style || '曲'));
+    return true;
+  }
+
+  // ---- UI (SPA対策: 無ければ作る／消えたら再注入) ----
+  const PANEL_ID = 'suno-creator-panel';
+  const FAB_ID = 'suno-creator-fab';
+
+  function init() {
+    if (!document.body || document.getElementById(PANEL_ID)) return;
+    const oldFab = document.getElementById(FAB_ID); if (oldFab) oldFab.remove();
+
+    let songs = [];     // 読み込んだ曲
+    let statuses = [];  // '' | submitting | submitted | failed
+    let sel = -1;       // 選択中index
+    let busy = false;
+    const BADGE = { submitting: '投入中', submitted: '投入済', failed: '失敗' };
+
+    // 開閉トグル(右端タブ)
+    const fab = document.createElement('button');
+    fab.id = FAB_ID;
+    fab.textContent = '♪ Suno Creator';
+    document.body.appendChild(fab);
+
+    const panel = document.createElement('div');
+    panel.id = PANEL_ID;
+    panel.innerHTML = `
+    <style>
+      #${FAB_ID}{position:fixed;right:0;top:50%;transform:translateY(-50%);z-index:2147483646;
+        background:#252529;color:#f7f4ef;border:1px solid #2e2e34;border-right:none;border-radius:10px 0 0 10px;
+        padding:12px 7px;cursor:pointer;writing-mode:vertical-rl;font-size:12px;letter-spacing:.1em;
+        font-family:"Neue Montreal",system-ui,"Segoe UI",sans-serif;box-shadow:-4px 0 16px rgba(0,0,0,.4);}
+      #${FAB_ID}:hover{background:#303035;}
+      #${PANEL_ID}{position:fixed;top:0;right:0;height:100vh;width:380px;z-index:2147483647;
+        background:#101012;color:#f7f4ef;border-left:1px solid #2e2e34;display:flex;flex-direction:column;
+        transform:translateX(100%);transition:transform .22s ease;box-shadow:-12px 0 40px rgba(0,0,0,.55);
+        font-family:"Neue Montreal",system-ui,"Segoe UI","Yu Gothic UI",sans-serif;font-size:13px;}
+      #${PANEL_ID}.open{transform:translateX(0);}
+      #${PANEL_ID} *{box-sizing:border-box;}
+      #${PANEL_ID} .dz{position:absolute;inset:0;display:none;align-items:center;justify-content:center;
+        background:rgba(16,16,18,.88);border:2px dashed #6c8cff;border-radius:12px;z-index:10;
+        color:#f7f4ef;font-size:14px;pointer-events:none;}
+      #${PANEL_ID} .hd{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid #2e2e34;flex-shrink:0;}
+      #${PANEL_ID} .hd b{font-size:14px;letter-spacing:.02em;}
+      #${PANEL_ID} .settings{padding:11px 14px;border-bottom:1px solid #2e2e34;background:#16161b;flex-shrink:0;}
+      #${PANEL_ID} .settings label{font-size:12px;color:#f7f4ef;display:flex;align-items:center;gap:8px;}
+      #${PANEL_ID} .settings input{width:80px;background:#0b0b0d;color:#f7f4ef;border:1px solid #2e2e34;border-radius:7px;padding:5px 8px;font-family:inherit;font-size:12px;outline:none;}
+      #${PANEL_ID} .bd{flex:1;display:flex;flex-direction:column;min-height:0;padding:12px 14px;gap:10px;}
+      #${PANEL_ID} .row{display:flex;gap:8px;align-items:center;}
+      #${PANEL_ID} button{background:#252529;color:#f7f4ef;border:1px solid #2e2e34;border-radius:999px;
+        padding:6px 14px;cursor:pointer;font-size:12px;font-family:inherit;}
+      #${PANEL_ID} button:hover{background:#303035;}
+      #${PANEL_ID} button.primary{background:#f7f4ef;border-color:#f7f4ef;color:#101012;font-weight:600;}
+      #${PANEL_ID} button.primary:hover{background:#fff;}
+      #${PANEL_ID} button:disabled{opacity:.45;cursor:not-allowed;}
+      #${PANEL_ID} .x{background:transparent;border:none;color:#8a8a90;font-size:18px;padding:0 4px;line-height:1;}
+      #${PANEL_ID} .x:hover{color:#f7f4ef;background:transparent;}
+      #${PANEL_ID} .cnt{color:#8a8a90;font-size:11px;}
+      #${PANEL_ID} .list{flex-shrink:0;max-height:34vh;overflow:auto;border:1px solid #2e2e34;border-radius:9px;}
+      #${PANEL_ID} .empty{color:#8a8a90;font-size:11px;padding:16px;text-align:center;}
+      #${PANEL_ID} .item{display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid #2e2e34;cursor:pointer;}
+      #${PANEL_ID} .item:last-child{border-bottom:none;}
+      #${PANEL_ID} .item:hover{background:#1a1a1d;}
+      #${PANEL_ID} .item.sel{background:#252529;}
+      #${PANEL_ID} .item .ix{color:#8a8a90;width:16px;text-align:right;font-size:11px;}
+      #${PANEL_ID} .item .mt{flex:1;min-width:0;}
+      #${PANEL_ID} .item .t{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+      #${PANEL_ID} .item .s{font-size:10px;color:#8a8a90;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+      #${PANEL_ID} .bdg{font-size:10px;padding:1px 8px;border-radius:999px;border:1px solid #2e2e34;color:#8a8a90;white-space:nowrap;}
+      #${PANEL_ID} .bdg.invalid,#${PANEL_ID} .bdg.failed{color:#ff8a8a;border-color:#5a2a2a;}
+      #${PANEL_ID} .bdg.submitting{color:#9ec5ff;border-color:#2a4a6b;}
+      #${PANEL_ID} .bdg.submitted{color:#8fe3b0;border-color:#2a5a42;}
+      #${PANEL_ID} .detail{flex:1;min-height:120px;overflow:auto;border:1px solid #2e2e34;border-radius:9px;padding:11px;}
+      #${PANEL_ID} .detail .ph{color:#8a8a90;font-size:12px;text-align:center;padding:20px 0;}
+      #${PANEL_ID} .fld{margin-bottom:9px;}
+      #${PANEL_ID} .fld label{display:block;font-size:10px;color:#8a8a90;margin-bottom:3px;}
+      #${PANEL_ID} input[type=text],#${PANEL_ID} textarea,#${PANEL_ID} select{width:100%;background:#0b0b0d;color:#f7f4ef;
+        border:1px solid #2e2e34;border-radius:7px;padding:7px 9px;font-family:inherit;font-size:12px;outline:none;}
+      #${PANEL_ID} input:focus,#${PANEL_ID} textarea:focus,#${PANEL_ID} select:focus{border-color:#f7f4ef;}
+      #${PANEL_ID} textarea{height:130px;resize:vertical;font-family:Consolas,monospace;line-height:1.45;}
+      #${PANEL_ID} .two{display:flex;gap:8px;}
+      #${PANEL_ID} .two>div{flex:1;}
+      #${PANEL_ID} .chk{display:flex;align-items:center;gap:6px;margin-bottom:9px;}
+      #${PANEL_ID} .chk input{width:15px;height:15px;accent-color:#f7f4ef;}
+      #${PANEL_ID} .chk label{margin:0;color:#f7f4ef;font-size:12px;}
+      #${PANEL_ID} input[type=range]{width:100%;accent-color:#f7f4ef;margin-top:2px;}
+      #${PANEL_ID} .seclabel{font-size:11px;color:#8a8a90;letter-spacing:.05em;margin:2px 0 -4px;text-transform:uppercase;}
+      #${PANEL_ID} .list{background:#0b0b0d;}
+      #${PANEL_ID} .detail{background:#16161b;}
+      #${PANEL_ID} .detail .dttl{font-size:12px;font-weight:600;color:#f7f4ef;margin-bottom:9px;
+        white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+      #${PANEL_ID} .log{flex-shrink:0;height:74px;overflow:auto;background:#0b0b0d;border:1px solid #2e2e34;border-radius:7px;
+        padding:6px 8px;font-family:Consolas,monospace;font-size:11px;color:#8a8a90;white-space:pre-wrap;}
+    </style>
+    <div class="hd"><b>Suno Creator</b><span style="flex:1"></span>
+      <button id="sc-gear" class="x" title="設定">⚙</button>
+      <button id="sc-x" class="x" title="閉じる">×</button></div>
+    <div id="sc-settings" class="settings" style="display:none;">
+      <label>次の曲まで待機（秒）<input type="number" id="sc-wait" min="0" step="5"></label>
+      <div class="cnt" style="margin-top:5px;">Premier: 同時生成は最大${MAX_CONCURRENT}曲。超過分は枠が空くまで待機して投入。</div>
+    </div>
+    <div class="bd">
+      <div class="row">
+        <button id="sc-file">ファイル読込</button>
+        <span style="flex:1"></span>
+        <button id="sc-run" class="primary">連続生成（全部）</button>
+      </div>
+      <div class="seclabel">📋 曲リスト <span class="cnt" id="sc-count">0曲</span></div>
+      <div class="list" id="sc-list"><div class="empty">「ファイル読込」でJSON(1曲/配列)を選択</div></div>
+      <div class="seclabel">⚙ 詳細（選択中の曲）</div>
+      <div class="detail" id="sc-detail"><div class="ph">↑ リストから曲を選択すると内容を表示</div></div>
+      <input id="sc-fileinput" type="file" accept=".json,application/json" style="display:none" />
+      <div class="log" id="sc-log">JSONを読み込み（ファイル選択 or ドラッグ&ドロップ）→曲を選んで内容確認→「連続生成（全部）」または各曲を生成。</div>
+    </div>
+    <div id="sc-dz" class="dz">📂 JSONをドロップして読み込み</div>`;
+    document.body.appendChild(panel);
+
+    const $ = (id) => panel.querySelector(id);
+    const logEl = $('#sc-log');
+    const log = (m) => { logEl.textContent += '\n' + m; logEl.scrollTop = logEl.scrollHeight; };
+
+    // 開閉(インラインtransformで確実に。CSSの.open上書きに依存しない)
+    const open = () => { panel.style.transform = 'translateX(0)'; fab.style.display = 'none'; };
+    const close = () => { panel.style.transform = 'translateX(100%)'; fab.style.display = ''; };
+    fab.addEventListener('click', open);
+    $('#sc-x').addEventListener('click', close);
+
+    // 設定(歯車): 待機秒数
+    $('#sc-gear').addEventListener('click', () => {
+      const s = $('#sc-settings');
+      const show = s.style.display === 'none';
+      s.style.display = show ? 'block' : 'none';
+      if (show) $('#sc-wait').value = getWait();
+    });
+    $('#sc-wait').addEventListener('change', () => {
+      let v = parseInt($('#sc-wait').value, 10);
+      if (!Number.isFinite(v) || v < 0) v = 60;
+      setWait(v); $('#sc-wait').value = v; log('待機時間: ' + v + '秒');
+    });
+
+    // ---- リスト ----
+    function renderList() {
+      $('#sc-count').textContent = songs.length + '曲';
+      const el = $('#sc-list');
+      if (!songs.length) { el.innerHTML = '<div class="empty">「ファイル読込」でJSON(1曲/配列)を選択</div>'; return; }
+      el.innerHTML = '';
+      songs.forEach((s, i) => {
+        const err = validate(s), st = statuses[i] || '';
+        const it = document.createElement('div');
+        it.className = 'item' + (i === sel ? ' sel' : '');
+        it.innerHTML =
+          '<span class="ix">' + (i + 1) + '</span>' +
+          '<div class="mt"><div class="t"></div><div class="s"></div></div>' +
+          (err ? '<span class="bdg invalid">要確認</span>' : (st ? '<span class="bdg ' + st + '">' + (BADGE[st] || st) + '</span>' : ''));
+        it.querySelector('.t').textContent = s.title || '(無題・自動命名)';
+        it.querySelector('.s').textContent = (s.instrumental ? '[inst] ' : '') + (s.style || '(スタイル未設定)');
+        it.addEventListener('click', () => select(i));
+        el.appendChild(it);
+      });
+    }
+
+    // ---- 詳細(選択曲) ----
+    function renderDetail() {
+      const el = $('#sc-detail');
+      if (sel < 0 || !songs[sel]) { el.innerHTML = '<div class="ph">↑ リストから曲を選択すると内容を表示</div>'; return; }
+      const s = songs[sel];
+      const w = s.weirdness != null ? Number(s.weirdness) : 50;
+      const si = s.styleInfluence != null ? Number(s.styleInfluence) : 50;
+      el.innerHTML = `
+        <button id="d-gen" class="primary" style="width:100%;margin-bottom:11px;">この曲を生成</button>
+        <div class="dttl" id="d-head"></div>
+        <div class="fld"><label>Title</label><input type="text" id="d-title"></div>
+        <div class="fld"><label>Style</label><input type="text" id="d-style"></div>
+        <div class="chk"><input type="checkbox" id="d-inst"><label for="d-inst">Instrumental（歌なし）</label></div>
+        <div class="fld" id="d-lyr-wrap"><label>Lyrics</label><textarea id="d-lyrics"></textarea></div>
+        <div class="two">
+          <div class="fld"><label>Vocal</label><select id="d-vocal">
+            <option value="auto">Auto</option><option value="female">Female</option><option value="male">Male</option></select></div>
+          <div class="fld"><label>Exclude</label><input type="text" id="d-exclude"></div>
+        </div>
+        <div class="two">
+          <div class="fld"><label>Weirdness <span id="d-wv">${w}</span></label><input type="range" id="d-weird" min="0" max="100" value="${w}"></div>
+          <div class="fld"><label>Style Influence <span id="d-sv">${si}</span></label><input type="range" id="d-sinf" min="0" max="100" value="${si}"></div>
+        </div>`;
+      $('#d-title').value = s.title || '';
+      $('#d-style').value = s.style || '';
+      $('#d-exclude').value = s.exclude || '';
+      $('#d-lyrics').value = s.lyrics || '';
+      $('#d-inst').checked = !!s.instrumental;
+      $('#d-vocal').value = ['male', 'female', 'auto'].includes(s.vocal) ? s.vocal : 'auto';
+      $('#d-head').textContent = s.title || '(無題・自動命名)';
+      function syncInst() { const on = $('#d-inst').checked; $('#d-lyrics').disabled = on; $('#d-lyr-wrap').style.opacity = on ? .4 : 1; }
+      syncInst();
+      const upd = () => {
+        s.title = $('#d-title').value; s.style = $('#d-style').value; s.exclude = $('#d-exclude').value;
+        s.lyrics = $('#d-lyrics').value; s.instrumental = $('#d-inst').checked; s.vocal = $('#d-vocal').value;
+        s.weirdness = Number($('#d-weird').value); s.styleInfluence = Number($('#d-sinf').value);
+        $('#d-head').textContent = s.title || '(無題・自動命名)';
+        renderList();
+      };
+      ['d-title', 'd-style', 'd-exclude', 'd-lyrics', 'd-vocal'].forEach((id) => $('#' + id).addEventListener('input', upd));
+      $('#d-weird').addEventListener('input', () => { $('#d-wv').textContent = $('#d-weird').value; upd(); });
+      $('#d-sinf').addEventListener('input', () => { $('#d-sv').textContent = $('#d-sinf').value; upd(); });
+      $('#d-inst').addEventListener('change', () => { upd(); syncInst(); });
+      $('#d-gen').addEventListener('click', () => genIndex(sel));
+    }
+
+    function select(i) { sel = i; renderList(); renderDetail(); }
+    function setStatus(i, st) { statuses[i] = st; renderList(); }
+
+    function loadData(data) {
+      songs = Array.isArray(data) ? data : [data];
+      statuses = songs.map(() => '');
+      sel = songs.length ? 0 : -1;
+      renderList(); renderDetail();
+    }
+
+    // ファイル(File)を読んでリストへ。ファイル選択・D&D共通。
+    function loadFromFile(f) {
+      if (!f) return;
+      if (!/\.json$/i.test(f.name)) { log('✖ JSONファイルを指定してください: ' + f.name); return; }
+      const rd = new FileReader();
+      rd.onload = () => {
+        const txt = String(rd.result).replace(/^﻿/, '').trim();
+        try { loadData(JSON.parse(txt)); log('📂 読込: ' + f.name + '（' + songs.length + '曲）'); }
+        catch (err) { log('✖ JSON不正: ' + err.message); }
+      };
+      rd.onerror = () => log('✖ 読込失敗');
+      rd.readAsText(f, 'utf-8');
+    }
+
+    async function genIndex(i) {
+      if (busy) return;
+      const s = songs[i], err = validate(s);
+      if (err) { log(`✖ #${i + 1}: ${err}`); return; }
+      busy = true; $('#sc-run').disabled = true;
+      setStatus(i, 'submitting'); log('生成: ' + (s.title || '#' + (i + 1)));
+      try { const ok = await generateOne(s, log); setStatus(i, ok ? 'submitted' : 'failed'); }
+      catch (e) { setStatus(i, 'failed'); log('✖ ' + e.message); }
+      finally { busy = false; $('#sc-run').disabled = false; }
+    }
+
+    // ---- ハンドラ ----
+    $('#sc-file').addEventListener('click', () => $('#sc-fileinput').click());
+    $('#sc-fileinput').addEventListener('change', (e) => { loadFromFile(e.target.files && e.target.files[0]); e.target.value = ''; });
+
+    // ---- ドラッグ&ドロップ(JSON) ----
+    const dz = $('#sc-dz');
+    const hasFiles = (e) => e.dataTransfer && [...e.dataTransfer.types].includes('Files');
+    const pickJson = (e) => [...(e.dataTransfer.files || [])].find((x) => /\.json$/i.test(x.name)) || (e.dataTransfer.files || [])[0];
+    let dragDepth = 0;
+    ['dragenter', 'dragover'].forEach((ev) => panel.addEventListener(ev, (e) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault(); e.dataTransfer.dropEffect = 'copy';
+      if (ev === 'dragenter') dragDepth++;
+      dz.style.display = 'flex';
+    }));
+    panel.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; dz.style.display = 'none'; } });
+    panel.addEventListener('drop', (e) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault(); dragDepth = 0; dz.style.display = 'none';
+      loadFromFile(pickJson(e));
+    });
+    // 右タブ(FAB)にドロップ → 開いて読込
+    ['dragenter', 'dragover'].forEach((ev) => fab.addEventListener(ev, (e) => { if (hasFiles(e)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } }));
+    fab.addEventListener('drop', (e) => { if (!hasFiles(e)) return; e.preventDefault(); open(); loadFromFile(pickJson(e)); });
+    $('#sc-run').addEventListener('click', async () => {
+      if (busy) return;
+      if (!songs.length) { log('曲がありません。「ファイル読込」してください。'); return; }
+      for (let i = 0; i < songs.length; i++) { const e = validate(songs[i]); if (e) { log(`✖ #${i + 1}: ${e}`); return; } }
+      const wait = getWait();
+      const inflight = [];   // 投入時刻(直近INFLIGHT_SECを生成中とみなす)
+      busy = true; $('#sc-run').disabled = true;
+      log(`— ${songs.length}曲 連続生成（間隔${wait}秒 / 同時上限${MAX_CONCURRENT}曲）—`);
+      try {
+        for (let i = 0; i < songs.length; i++) {
+          // 同時生成が上限なら枠が空く(推定)まで待機
+          while (inflight.filter((t) => Date.now() - t < INFLIGHT_SEC * 1000).length >= MAX_CONCURRENT) {
+            log(`生成中が上限(${MAX_CONCURRENT}曲)。${wait}秒待機して再確認...`);
+            await sleep(wait * 1000);
+          }
+          log(`[${i + 1}/${songs.length}] ${songs[i].title || ''}`);
+          setStatus(i, 'submitting');
+          const ok = await generateOne(songs[i], log);
+          setStatus(i, ok ? 'submitted' : 'failed');
+          inflight.push(Date.now());
+          if (i < songs.length - 1) await sleep(wait * 1000);
+        }
+        log('✅ 完了（Suno側で生成中）');
+      } catch (e) { log('✖ ' + e.message); }
+      finally { busy = false; $('#sc-run').disabled = false; }
+    });
+
+    console.log('[Suno Creator] ready');
+  } // end init
+
+  init();
+  // SunoはSPA。マウント後/ページ遷移でUIが無くなったら作り直す
+  setInterval(() => { if (!document.getElementById(PANEL_ID)) init(); }, 1500);
+})();
