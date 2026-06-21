@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Suno Creator
 // @namespace    hwiiza.suno
-// @version      0.2.2
+// @version      0.2.3
 // @description  SunoのCreate画面にパネルを表示し、JSON(1曲/配列)から曲を生成・連続生成。曲のMP3一括/個別ダウンロードも対応。
 // @match        https://suno.com/*
 // @match        https://www.suno.com/*
@@ -23,6 +23,9 @@
   const WAIT_KEY = 'sunoCreator.waitSeconds';
   const getWait = () => { const v = parseInt(localStorage.getItem(WAIT_KEY) || '', 10); return Number.isFinite(v) && v >= 0 ? v : 60; };
   const setWait = (v) => localStorage.setItem(WAIT_KEY, String(v));
+  const WIDTH_KEY = 'sunoCreator.panelWidth';
+  const getWidth = () => { const v = parseInt(localStorage.getItem(WIDTH_KEY) || '', 10); return Number.isFinite(v) && v >= 300 ? v : 380; };
+  const setWidthLS = (v) => localStorage.setItem(WIDTH_KEY, String(v));
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   // ---- 保存先(File System Access API)・DL ヘルパー ----
@@ -186,7 +189,7 @@
       #${FAB_ID}{position:fixed;right:0;top:50%;transform:translateY(-50%);z-index:2147483646;
         background:#252529;color:#f7f4ef;border:1px solid #2e2e34;border-right:none;border-radius:10px 0 0 10px;
         padding:12px 7px;cursor:pointer;writing-mode:vertical-rl;font-size:12px;letter-spacing:.1em;
-        font-family:"Neue Montreal",system-ui,"Segoe UI",sans-serif;box-shadow:-4px 0 16px rgba(0,0,0,.4);}
+        font-family:"Neue Montreal",system-ui,"Segoe UI",sans-serif;box-shadow:-4px 0 16px rgba(0,0,0,.4);transition:right .22s ease;}
       #${FAB_ID}:hover{background:#303035;}
       #${PANEL_ID}{position:fixed;top:0;right:0;height:100vh;width:380px;z-index:2147483647;
         background:#101012;color:#f7f4ef;border-left:1px solid #2e2e34;display:flex;flex-direction:column;
@@ -194,6 +197,8 @@
         font-family:"Neue Montreal",system-ui,"Segoe UI","Yu Gothic UI",sans-serif;font-size:13px;}
       #${PANEL_ID}.open{transform:translateX(0);}
       #${PANEL_ID} *{box-sizing:border-box;}
+      #${PANEL_ID} .resize{position:absolute;left:0;top:0;width:7px;height:100%;cursor:ew-resize;z-index:12;}
+      #${PANEL_ID} .resize:hover{background:linear-gradient(to right,#6c8cff66,transparent);}
       #${PANEL_ID} .dz{position:absolute;inset:0;display:none;align-items:center;justify-content:center;
         background:rgba(16,16,18,.88);border:2px dashed #6c8cff;border-radius:12px;z-index:10;
         color:#f7f4ef;font-size:14px;pointer-events:none;}
@@ -255,6 +260,7 @@
       #${PANEL_ID} .bdg.downloading{color:#9ec5ff;border-color:#2a4a6b;}
       #${PANEL_ID} .bdg.done{color:#8fe3b0;border-color:#2a5a42;}
     </style>
+    <div class="resize" id="sc-resize" title="ドラッグで横幅調整"></div>
     <div class="hd"><b>Suno Creator</b>
       <button id="sc-tab-create" class="tab active">作成</button>
       <button id="sc-tab-dl" class="tab">DL</button>
@@ -303,11 +309,33 @@
     const logEl = $('#sc-log');
     const log = (m) => { logEl.textContent += '\n' + m; logEl.scrollTop = logEl.scrollHeight; };
 
-    // 開閉(インラインtransformで確実に。CSSの.open上書きに依存しない)
-    const open = () => { panel.style.transform = 'translateX(0)'; fab.style.display = 'none'; };
-    const close = () => { panel.style.transform = 'translateX(100%)'; fab.style.display = ''; };
-    fab.addEventListener('click', open);
-    $('#sc-x').addEventListener('click', close);
+    // 横幅(記憶値を適用)
+    panel.style.width = getWidth() + 'px';
+
+    // 開閉(FABは常時表示でトグル。開いている時はパネル左端の外側に出す)
+    let isOpen = false;
+    const applyOpen = () => {
+      panel.style.transform = isOpen ? 'translateX(0)' : 'translateX(100%)';
+      fab.style.right = isOpen ? (panel.offsetWidth + 'px') : '0';
+    };
+    const openPanel = () => { isOpen = true; applyOpen(); };
+    const closePanel = () => { isOpen = false; applyOpen(); };
+    const toggle = () => { isOpen = !isOpen; applyOpen(); };
+    fab.addEventListener('click', toggle);
+    $('#sc-x').addEventListener('click', closePanel);
+
+    // 横幅リサイズ(左端ハンドルをドラッグ)
+    (function () {
+      const h = $('#sc-resize'); let on = false;
+      h.addEventListener('mousedown', (e) => { on = true; e.preventDefault(); });
+      window.addEventListener('mousemove', (e) => {
+        if (!on) return;
+        const w = Math.max(300, Math.min(window.innerWidth - 20, window.innerWidth - e.clientX));
+        panel.style.width = w + 'px';
+        if (isOpen) fab.style.right = w + 'px';
+      });
+      window.addEventListener('mouseup', () => { if (on) { on = false; setWidthLS(parseInt(panel.style.width, 10) || 380); } });
+    })();
 
     // 設定(歯車): 待機秒数
     $('#sc-gear').addEventListener('click', () => {
@@ -447,7 +475,7 @@
     });
     // 右タブ(FAB)にドロップ → 開いて読込
     ['dragenter', 'dragover'].forEach((ev) => fab.addEventListener(ev, (e) => { if (hasFiles(e)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } }));
-    fab.addEventListener('drop', (e) => { if (!hasFiles(e)) return; e.preventDefault(); open(); loadFromFile(pickJson(e)); });
+    fab.addEventListener('drop', (e) => { if (!hasFiles(e)) return; e.preventDefault(); openPanel(); loadFromFile(pickJson(e)); });
     $('#sc-run').addEventListener('click', async () => {
       if (busy) return;
       if (!songs.length) { log('曲がありません。「ファイル読込」してください。'); return; }
