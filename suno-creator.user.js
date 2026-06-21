@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Suno Creator
 // @namespace    hwiiza.suno
-// @version      0.2.1
+// @version      0.2.2
 // @description  SunoのCreate画面にパネルを表示し、JSON(1曲/配列)から曲を生成・連続生成。曲のMP3一括/個別ダウンロードも対応。
 // @match        https://suno.com/*
 // @match        https://www.suno.com/*
@@ -24,6 +24,45 @@
   const getWait = () => { const v = parseInt(localStorage.getItem(WAIT_KEY) || '', 10); return Number.isFinite(v) && v >= 0 ? v : 60; };
   const setWait = (v) => localStorage.setItem(WAIT_KEY, String(v));
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  // ---- 保存先(File System Access API)・DL ヘルパー ----
+  // 選んだフォルダのハンドルを IndexedDB に保存して次回も使う
+  function idbReq(mode, fn) {
+    return new Promise((res) => {
+      const r = indexedDB.open('sunoCreator', 1);
+      r.onupgradeneeded = () => r.result.createObjectStore('kv');
+      r.onsuccess = () => { const tx = r.result.transaction('kv', mode); const out = fn(tx.objectStore('kv')); tx.oncomplete = () => res(out ? out.result : undefined); tx.onerror = () => res(undefined); };
+      r.onerror = () => res(null);
+    });
+  }
+  const idbGet = (k) => idbReq('readonly', (s) => s.get(k));
+  const idbSet = (k, v) => idbReq('readwrite', (s) => s.put(v, k));
+  // フォルダの書込権限を確保(クリックのジェスチャ中に呼ぶこと)
+  async function ensurePerm(h) {
+    if (!h) return false;
+    const opt = { mode: 'readwrite' };
+    try { if ((await h.queryPermission(opt)) === 'granted') return true; return (await h.requestPermission(opt)) === 'granted'; }
+    catch (_) { return false; }
+  }
+  async function saveToDir(dir, name, blob) {
+    const fh = await dir.getFileHandle(name, { create: true });
+    const w = await fh.createWritable(); await w.write(blob); await w.close();
+  }
+  function aDownload(blob, name) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 15000);
+  }
+  function fetchBlob(id) {
+    return new Promise((res, rej) => {
+      GM_xmlhttpRequest({
+        method: 'GET', url: 'https://cdn1.suno.ai/' + id + '.mp3', responseType: 'blob',
+        onload: (r) => (r.status === 200 ? res(r.response) : rej(new Error('HTTP ' + r.status))),
+        onerror: () => rej(new Error('network')), ontimeout: () => rej(new Error('timeout')),
+      });
+    });
+  }
 
   // ---- DOMユーティリティ ----
   const isVisible = (el) => !!(el && el.getClientRects().length && el.offsetParent !== null);
@@ -245,7 +284,13 @@
           <span style="flex:1"></span>
           <button id="sc-dlsel" class="primary">選択をDL</button>
         </div>
-        <div class="seclabel">⬇ ダウンロード <span class="cnt" id="sc-libcount">0曲</span><span class="cnt"> ・MP3→DLフォルダ</span></div>
+        <div class="seclabel">⬇ ダウンロード <span class="cnt" id="sc-libcount">0曲</span></div>
+        <div class="row" style="font-size:11px;">
+          <span class="cnt">保存先:</span>
+          <span id="sc-dldir" class="cnt" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#f7f4ef;">ダウンロードフォルダ</span>
+          <button id="sc-dirpick" style="padding:3px 10px;">変更</button>
+          <button id="sc-dirclear" style="padding:3px 10px;">既定</button>
+        </div>
         <label class="cnt" style="display:flex;align-items:center;gap:6px;cursor:pointer;margin:-2px 0;"><input type="checkbox" id="sc-dlall" style="width:14px;height:14px;accent-color:#f7f4ef;"> 全選択</label>
         <div class="list dllist" id="sc-dllist"><div class="empty">「ライブラリ読込」でワークスペースの曲一覧を取得</div></div>
       </div>
@@ -442,7 +487,7 @@
     $('#sc-tab-dl').addEventListener('click', () => showTab('dl'));
 
     // ===== ダウンロード（曲のMP3） =====
-    let clips = [], dlChecked = [], dlStatus = [];
+    let clips = [], dlChecked = [], dlStatus = [], dirHandle = null;  // dirHandle=保存先フォルダ(未設定=DLフォルダ)
     const DLBADGE = { downloading: 'DL中', done: '完了', failed: '失敗' };
     const sanitize = (n) => (n || 'untitled').replace(/[\\/:*?"<>|]/g, '_').replace(/\s+/g, ' ').trim().slice(0, 100) || 'untitled';
 
@@ -501,22 +546,8 @@
       });
     }
 
-    // CDN直リンクをGM_xmlhttpRequestでblob取得→<a download>で保存(CORS回避)
-    function fetchAndSave(id, filename) {
-      return new Promise((resolve, reject) => {
-        GM_xmlhttpRequest({
-          method: 'GET', url: 'https://cdn1.suno.ai/' + id + '.mp3', responseType: 'blob',
-          onload: (r) => {
-            if (r.status !== 200) { reject(new Error('HTTP ' + r.status)); return; }
-            const url = URL.createObjectURL(r.response);
-            const a = document.createElement('a'); a.href = url; a.download = filename;
-            document.body.appendChild(a); a.click(); a.remove();
-            setTimeout(() => URL.revokeObjectURL(url), 15000);
-            resolve();
-          },
-          onerror: () => reject(new Error('network')), ontimeout: () => reject(new Error('timeout')),
-        });
-      });
+    function updateDirLabel() {
+      $('#sc-dldir').textContent = dirHandle ? ('📁 ' + dirHandle.name) : 'ダウンロードフォルダ';
     }
 
     async function downloadIdx(indices) {
@@ -524,18 +555,25 @@
       const list = indices.filter((i) => clips[i]);
       if (!list.length) return;
       busy = true; $('#sc-dlsel').disabled = true; $('#sc-lib').disabled = true;
+      // フォルダ指定があれば権限確保(クリックのジェスチャ中に確認)。無理ならDLフォルダへ。
+      let useDir = false;
+      if (dirHandle) { useDir = await ensurePerm(dirHandle); if (!useDir) log('⚠ フォルダ権限なし→ダウンロードフォルダに保存'); }
+      const dest = useDir ? ('📁 ' + dirHandle.name) : 'ダウンロードフォルダ';
       const used = new Set();
-      log('— DL ' + list.length + '曲 → ダウンロードフォルダ —');
+      log('— DL ' + list.length + '曲 → ' + dest + ' —');
       for (const i of list) {
         const c = clips[i];
         let base = sanitize(c.title || c.id), name = base + '.mp3', k = 2;
         while (used.has(name.toLowerCase())) name = base + ' (' + (k++) + ').mp3';
         used.add(name.toLowerCase());
         dlStatus[i] = 'downloading'; renderDlList();
-        try { await fetchAndSave(c.id, name); dlStatus[i] = 'done'; log('  ✅ ' + name); }
-        catch (e) { dlStatus[i] = 'failed'; log('  ✖ ' + name + ' — ' + e.message); }
+        try {
+          const blob = await fetchBlob(c.id);
+          if (useDir) await saveToDir(dirHandle, name, blob); else aDownload(blob, name);
+          dlStatus[i] = 'done'; log('  ✅ ' + name);
+        } catch (e) { dlStatus[i] = 'failed'; log('  ✖ ' + name + ' — ' + e.message); }
         renderDlList();
-        await sleep(400);
+        await sleep(300);
       }
       busy = false; $('#sc-dlsel').disabled = false; $('#sc-lib').disabled = false;
       log('✅ DL完了');
@@ -557,6 +595,20 @@
       if (!idx.length) { log('DLする曲が選択されていません'); return; }
       downloadIdx(idx);
     });
+
+    // 保存先フォルダの選択・解除
+    $('#sc-dirpick').addEventListener('click', async () => {
+      if (!window.showDirectoryPicker) { log('このブラウザはフォルダ選択に非対応（Chrome/Edge推奨）。DLフォルダに保存します。'); return; }
+      try {
+        const h = await window.showDirectoryPicker({ id: 'sunoCreatorDl', mode: 'readwrite' });
+        dirHandle = h; await idbSet('dlDir', h); updateDirLabel(); log('保存先: ' + h.name);
+      } catch (_) { /* キャンセル */ }
+    });
+    $('#sc-dirclear').addEventListener('click', async () => {
+      dirHandle = null; await idbSet('dlDir', null); updateDirLabel(); log('保存先: ダウンロードフォルダ');
+    });
+    // 前回選んだフォルダを復元(権限は次回DL時に確認)
+    (async () => { try { const h = await idbGet('dlDir'); if (h) { dirHandle = h; updateDirLabel(); } } catch (_) {} })();
 
     console.log('[Suno Creator] ready');
   } // end init
