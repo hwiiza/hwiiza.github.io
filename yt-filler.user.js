@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube 概要欄フィラー (yt-filler)
 // @namespace    hwiiza.yt-filler
-// @version      1.12
+// @version      1.13
 // @description  指定フォーマットの .txt を読み込み、YouTube Studio のタイトル/概要欄/タグを自動入力する（チャンネル非依存の汎用ツール）
 // @match        https://studio.youtube.com/*
 // @run-at       document-idle
@@ -206,13 +206,19 @@
   // ---------- UI ----------
   function buildPanel() {
     if (document.getElementById('crimson-yt-panel')) return;
+    const oldFab = document.getElementById('cyt-fab'); if (oldFab) oldFab.remove();
+
+    // 右端の縦タブ（開くトリガ）
+    const fab = el('button', { id: 'cyt-fab', text: '🔴 yt-filler' });
+    document.body.appendChild(fab);
+
     const box = document.createElement('div');
     box.id = 'crimson-yt-panel';
-    box.style.cssText = 'position:fixed;right:16px;bottom:16px;z-index:2147483647;width:300px;background:#111;color:#eee;border:1px solid #e11;border-radius:10px;font:12px/1.5 system-ui,sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.5);overflow:hidden';
 
-    const head = el('div', { id: 'cyt-head', style: 'background:#c00;padding:8px 10px;font-weight:700;cursor:move;display:flex;justify-content:space-between;align-items:center' }, [
-      el('span', { text: '🔴 yt-filler' }),
-      el('span', { id: 'cyt-min', text: '_', style: 'cursor:pointer' }),
+    const head = el('div', { id: 'cyt-head' }, [
+      el('b', { text: '🔴 yt-filler' }),
+      el('span', { style: 'flex:1' }),
+      el('button', { id: 'cyt-x', class: 'cyt-x', title: '閉じる', text: '×' }),
     ]);
     const fileInput = el('input', { id: 'cyt-file', type: 'file', accept: '.txt', style: 'display:block;margin-top:3px;width:100%;font-size:11px' });
     const label = el('label', { style: 'display:block' }, ['① txtを読込（D&D可）', fileInput]);
@@ -226,8 +232,8 @@
       mkBtn('thumb', 'サムネ'), mkBtn('kids', '子供向けでない'),
       mkBtn('all', '全部設定', 'background:#c00;border-color:#c00'),
     ]);
-    const logDiv = el('div', { id: 'cyt-log', style: 'font-size:11px;max-height:120px;overflow:auto;background:#000;padding:5px;border-radius:5px' });
-    const bodyDiv = el('div', { id: 'cyt-body', style: 'padding:10px;display:flex;flex-direction:column;gap:7px' }, [label, thumbLabel, thumbPreview, infoDiv, grid, logDiv]);
+    const logDiv = el('div', { id: 'cyt-log', style: 'flex-shrink:0;height:120px;overflow:auto;background:#000;padding:5px;border-radius:5px' });
+    const bodyDiv = el('div', { id: 'cyt-body' }, [label, thumbLabel, thumbPreview, infoDiv, grid, logDiv]);
     box.appendChild(head);
     box.appendChild(bodyDiv);
     document.body.appendChild(box);
@@ -235,8 +241,27 @@
     if (!document.getElementById('crimson-yt-style')) {
       const style = document.createElement('style');
       style.id = 'crimson-yt-style';
-      // ホストCSSとの衝突回避のため #crimson-yt-panel 配下にスコープ
-      style.textContent = '#crimson-yt-panel *{box-sizing:border-box}#crimson-yt-panel .cyt-b{background:#222;color:#eee;border:1px solid #555;border-radius:6px;padding:6px;cursor:pointer;font-size:12px}#crimson-yt-panel .cyt-b:hover{background:#333}';
+      // ホストCSSとの衝突回避のため #crimson-yt-panel / #cyt-fab 配下にスコープ
+      style.textContent = [
+        '#cyt-fab{position:fixed;right:0;top:50%;transform:translateY(-50%);z-index:2147483646;',
+        'background:#c00;color:#fff;border:1px solid #e11;border-right:none;border-radius:10px 0 0 10px;',
+        'padding:12px 7px;cursor:pointer;writing-mode:vertical-rl;font:700 12px/1.4 system-ui,sans-serif;',
+        'letter-spacing:.08em;box-shadow:-4px 0 16px rgba(0,0,0,.45)}',
+        '#cyt-fab:hover{background:#d00}',
+        '#crimson-yt-panel{position:fixed;top:0;right:0;height:100vh;width:300px;z-index:2147483647;',
+        'background:#111;color:#eee;border-left:1px solid #e11;display:flex;flex-direction:column;',
+        'transform:translateX(100%);transition:transform .22s ease;box-shadow:-12px 0 40px rgba(0,0,0,.55);',
+        'font:12px/1.5 system-ui,sans-serif}',
+        '#crimson-yt-panel.open{transform:translateX(0)}',
+        '#crimson-yt-panel *{box-sizing:border-box}',
+        '#cyt-head{background:#c00;padding:10px 12px;font-weight:700;display:flex;align-items:center;gap:8px;flex-shrink:0}',
+        '#cyt-head b{font-size:14px}',
+        '#cyt-x{background:transparent;border:none;color:#fff;font-size:20px;line-height:1;padding:0 4px;cursor:pointer}',
+        '#cyt-x:hover{color:#ffd}',
+        '#cyt-body{flex:1;min-height:0;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:8px}',
+        '#crimson-yt-panel .cyt-b{background:#222;color:#eee;border:1px solid #555;border-radius:6px;padding:8px;cursor:pointer;font-size:12px}',
+        '#crimson-yt-panel .cyt-b:hover{background:#333}',
+      ].join('');
       document.head.appendChild(style);
     }
 
@@ -365,25 +390,22 @@
       }
     }));
 
-    // 最小化（最小化時は必ず右下へドッキング）
-    const minSpan = box.querySelector('#cyt-min');
-    const dockBR = () => { box.style.left = 'auto'; box.style.top = 'auto'; box.style.right = '16px'; box.style.bottom = '16px'; };
-    const setMin = (min) => {
-      bodyDiv.style.display = min ? 'none' : 'flex';
-      minSpan.textContent = min ? '▢' : '_';
-      if (min) dockBR();   // 移動後でも最小化したら右下に戻す
-    };
-    minSpan.addEventListener('click', () => setMin(bodyDiv.style.display !== 'none'));
-    setMin(true);   // デフォルトは最小化
-
-    // ドラッグ移動
-    (function drag() {
-      const head = box.querySelector('#cyt-head');
-      let sx, sy, ox, oy, on = false;
-      head.addEventListener('mousedown', e => { if (e.target.id === 'cyt-min') return; on = true; sx = e.clientX; sy = e.clientY; const r = box.getBoundingClientRect(); ox = r.left; oy = r.top; e.preventDefault(); });
-      document.addEventListener('mousemove', e => { if (!on) return; box.style.left = (ox + e.clientX - sx) + 'px'; box.style.top = (oy + e.clientY - sy) + 'px'; box.style.right = 'auto'; box.style.bottom = 'auto'; });
-      document.addEventListener('mouseup', () => on = false);
-    })();
+    // 開閉（右端タブから全高パネルがスライドイン／× で右へ収納）
+    const open = () => { box.classList.add('open'); fab.style.display = 'none'; };
+    const close = () => { box.classList.remove('open'); fab.style.display = ''; };
+    fab.addEventListener('click', open);
+    box.querySelector('#cyt-x').addEventListener('click', close);
+    // ファイルをタブにドロップしたら開いて読込
+    ['dragenter', 'dragover'].forEach(t => fab.addEventListener(t, (e) => {
+      if (e.dataTransfer && [...e.dataTransfer.types].includes('Files')) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }
+    }));
+    fab.addEventListener('drop', (e) => {
+      const files = e.dataTransfer && e.dataTransfer.files;
+      if (!files || !files.length) return;
+      e.preventDefault(); open();
+      for (const f of files) routeFile(f);
+    });
+    close();   // デフォルトは収納（右端タブのみ表示）
   }
 
   // SPA対策: 冪等な init を一定間隔で呼び、UIが消えたら再注入（§2）
