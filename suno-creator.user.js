@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Suno Creator
 // @namespace    hwiiza.suno
-// @version      0.2.3
+// @version      0.2.4
 // @description  SunoのCreate画面にパネルを表示し、JSON(1曲/配列)から曲を生成・連続生成。曲のMP3一括/個別ダウンロードも対応。
 // @match        https://suno.com/*
 // @match        https://www.suno.com/*
@@ -50,6 +50,15 @@
   async function saveToDir(dir, name, blob) {
     const fh = await dir.getFileHandle(name, { create: true });
     const w = await fh.createWritable(); await w.write(blob); await w.close();
+  }
+  async function fileExistsInDir(dir, name) {
+    try { await dir.getFileHandle(name, { create: false }); return true; } catch (_) { return false; }
+  }
+  // 今回DL分(used) と フォルダ内の既存ファイル の両方を避けた一意名（macOS/Win問わず上書き防止）
+  async function freeName(dir, base, ext, used) {
+    let cand = base + ext, n = 2;
+    while (used.has(cand.toLowerCase()) || (dir && await fileExistsInDir(dir, cand))) cand = base + ' (' + (n++) + ')' + ext;
+    return cand;
   }
   function aDownload(blob, name) {
     const url = URL.createObjectURL(blob);
@@ -591,8 +600,10 @@
       log('— DL ' + list.length + '曲 → ' + dest + ' —');
       for (const i of list) {
         const c = clips[i];
-        let base = sanitize(c.title || c.id), name = base + '.mp3', k = 2;
-        while (used.has(name.toLowerCase())) name = base + ' (' + (k++) + ').mp3';
+        const base = sanitize(c.title || c.id);
+        let name;
+        if (useDir) { name = await freeName(dirHandle, base, '.mp3', used); }   // 既存ファイルも避けて連番
+        else { name = base + '.mp3'; let k = 2; while (used.has(name.toLowerCase())) name = base + ' (' + (k++) + ').mp3'; }  // DLフォルダはブラウザが自動連番
         used.add(name.toLowerCase());
         dlStatus[i] = 'downloading'; renderDlList();
         try {
