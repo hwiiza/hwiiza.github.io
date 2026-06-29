@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Suno Workspace Duration Sum
 // @namespace    https://hwiiza.example
-// @version      1.8
-// @description  Workspace 全曲の再生時間をスクロールで集計。右上のバッジを常時表示＆ドラッグ移動＆位置記憶。シングルクリックで集計実行。
+// @version      1.9
+// @description  Workspace 全曲の再生時間をスクロールで集計（List/Waveform/Grid 全表示モード対応）。右上のバッジを常時表示＆ドラッグ移動＆位置記憶。シングルクリックで集計実行。
 // @match        https://suno.com/*
 // @match        https://www.suno.com/*
 // @run-at       document-end
@@ -156,48 +156,60 @@
     return document.scrollingElement || document.documentElement;
   }
 
-  function findRowGroup() {
-    const groups = Array.from(document.querySelectorAll('div[role="rowgroup"]'));
-    if (!groups.length) return null;
-    return groups.find((g) => g.querySelector('[data-testid="clip-row"]')) || groups[0];
-  }
-
   /* ---------------------------
-      Inline data extraction
+      Inline data extraction (React fiber based — works in List/Waveform/Grid)
   ----------------------------*/
-  function getSongIdFromRow(row) {
-    const link = row.querySelector('a[href*="/song/"]');
-    if (!link) return null;
-    const href = link.getAttribute("href") || "";
-    const m = href.match(/\/song\/([^/?#]+)/);
-    return m ? m[1] : null;
-  }
-
-  function getDurationFromRow(row) {
-    const nodes = row.querySelectorAll("div, span");
-    const re = /^\s*\d+:\d{2}\s*$/;
-    for (const el of nodes) {
-      const t = (el.textContent || "").trim();
-      if (!re.test(t)) continue;
-      const sec = parseDurationToSeconds(t);
-      if (sec > 0) return sec;
+  function getClipFromElement(el) {
+    const fiberKey = Object.keys(el).find((k) => k.startsWith("__reactFiber"));
+    if (!fiberKey) return null;
+    let node = el[fiberKey];
+    let depth = 0;
+    while (node && depth < 14) {
+      const mp = node.memoizedProps;
+      if (
+        mp &&
+        mp.clip &&
+        typeof mp.clip === "object" &&
+        mp.clip.id &&
+        mp.clip.metadata &&
+        typeof mp.clip.metadata.duration === "number" &&
+        mp.clip.metadata.duration > 0
+      ) {
+        return mp.clip;
+      }
+      node = node.return;
+      depth++;
     }
-    return 0;
+    return null;
   }
 
-  function scanVisibleRows(rowgroup, seenIds, totals) {
-    const rows = rowgroup.querySelectorAll('[data-testid="clip-row"]');
-    rows.forEach((row) => {
-      const id = getSongIdFromRow(row);
-      if (!id || seenIds.has(id)) return;
+  function findClipScope() {
+    // Workspace のソング一覧パネル(右側)を絞り込めるとスキャンが軽くなる。
+    // 一旦 1 件でも clip を持つ要素を見つけて、そのスクロール祖先をスコープとして返す。
+    const candidates = document.querySelectorAll(
+      'div[draggable="true"], [data-testid="clip-row"], a[href*="/song/"]'
+    );
+    for (const el of candidates) {
+      if (getClipFromElement(el)) return el;
+    }
+    return null;
+  }
 
-      const sec = getDurationFromRow(row);
-      if (sec <= 0) return;
-
-      seenIds.add(id);
-      totals.totalSec += sec;
+  function scanVisibleClips(root, seenIds, totals) {
+    // root 配下のあらゆる要素を見て、React fiber に clip があるものを拾う。
+    // 同じ clip が複数の DOM ノードに付いていても id 重複排除で 1 回しか加算しない。
+    const scope = root && root.querySelectorAll ? root : document;
+    const candidates = scope.querySelectorAll(
+      'div[draggable="true"], [data-testid="clip-row"], a[href*="/song/"]'
+    );
+    for (const el of candidates) {
+      const clip = getClipFromElement(el);
+      if (!clip) continue;
+      if (seenIds.has(clip.id)) continue;
+      seenIds.add(clip.id);
+      totals.totalSec += clip.metadata.duration;
       totals.count++;
-    });
+    }
   }
 
   /* ---------------------------
@@ -273,15 +285,15 @@
       Full scroll → sum all data
   ----------------------------*/
   async function sumAllWithScroll() {
-    const badge = ensureBadge("集計中...");
-    const rowgroup = findRowGroup();
+    ensureBadge("集計中...");
 
-    if (!rowgroup) {
+    const anchor = findClipScope();
+    if (!anchor) {
       showBadge("曲情報なし");
       return;
     }
 
-    const scrollEl = findScrollableAncestor(rowgroup);
+    const scrollEl = findScrollableAncestor(anchor);
     const startTop = scrollEl.scrollTop;
     const seenIds = new Set();
     const totals = { totalSec: 0, count: 0 };
@@ -290,17 +302,23 @@
     const maxLoops = 500;
     const step = Math.max(60, Math.floor(scrollEl.clientHeight * 0.85));
 
-    scanVisibleRows(rowgroup, seenIds, totals);
+    scanVisibleClips(scrollEl, seenIds, totals);
 
     while (
       scrollEl.scrollTop + scrollEl.clientHeight < scrollEl.scrollHeight - 5 &&
       loops < maxLoops
     ) {
       loops++;
+      const before = totals.count;
       scrollEl.scrollTop += step;
       await new Promise((resolve) => requestAnimationFrame(resolve));
-      scanVisibleRows(rowgroup, seenIds, totals);
-      ensureBadge(badge ? badge.textContent : "集計中...");
+      scanVisibleClips(scrollEl, seenIds, totals);
+      ensureBadge(`集計中... ${totals.count}曲`);
+      // 進捗が止まったらもう一度だけ待ってからbreak（virtualizedの遅延ロード対策）
+      if (totals.count === before && loops > 3) {
+        await new Promise((resolve) => setTimeout(resolve, 120));
+        scanVisibleClips(scrollEl, seenIds, totals);
+      }
     }
 
     scrollEl.scrollTop = startTop;
