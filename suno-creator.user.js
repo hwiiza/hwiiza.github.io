@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Suno Creator
 // @namespace    hwiiza.suno
-// @version      0.2.4
+// @version      0.2.5
 // @description  SunoのCreate画面にパネルを表示し、JSON(1曲/配列)から曲を生成・連続生成。曲のMP3一括/個別ダウンロードも対応。
 // @match        https://suno.com/*
 // @match        https://www.suno.com/*
@@ -529,15 +529,27 @@
     const sanitize = (n) => (n || 'untitled').replace(/[\\/:*?"<>|]/g, '_').replace(/\s+/g, ' ').trim().slice(0, 100) || 'untitled';
 
     // ワークスペース(仮想スクロール)を下まで送りながら曲を全件収集
+    // ※SunoのUI変更で曲は /song/<id> リンクでなくなった→カバー画像URL(cdn2.suno.ai/image_<id>)からid抽出。
+    //   その<id>は音源 cdn1.suno.ai/<id>.mp3 と一致。タイトルはカードの先頭テキスト行。
     async function scrapeLibrary() {
+      const UUID = /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i;
       const map = new Map();
       const grab = () => {
-        document.querySelectorAll('a[href*="/song/"]').forEach((a) => {
-          const m = (a.getAttribute('href') || '').match(/\/song\/([0-9a-f-]{36})/i);
-          if (!m) return; const id = m[1]; if (map.has(id)) return;
-          let title = (a.getAttribute('title') || a.innerText || '').trim();
-          if (!title) { let cur = a; for (let u = 0; u < 4 && cur && !title; u++) { cur = cur.parentElement; if (cur) { const t = cur.querySelector('[title]'); if (t) title = (t.getAttribute('title') || t.innerText || '').trim(); } } }
-          map.set(id, { id, title: title.slice(0, 80) });
+        const scope = document.querySelector('.clip-browser-list-scroller') || document;
+        // 各曲カードは「More options」ボタンを1つ持つ。そこを起点にカバー画像(uuid)を含む祖先=カードを特定。
+        scope.querySelectorAll('button[aria-label="More options"]').forEach((btn) => {
+          let card = btn, img = null;
+          for (let u = 0; u < 12 && card.parentElement; u++) {
+            card = card.parentElement;
+            const im = card.querySelector('img');
+            if (im && UUID.test(im.getAttribute('src') || im.getAttribute('data-src') || im.currentSrc || '')) { img = im; break; }
+          }
+          if (!img) return;
+          const id = (img.getAttribute('src') || img.getAttribute('data-src') || img.currentSrc || '').match(UUID)[1];
+          if (map.has(id)) return;
+          const lines = (card.innerText || '').split('\n').map((s) => s.trim()).filter(Boolean);
+          const title = (lines.find((l) => !/^\d{1,2}:\d{2}$/.test(l) && !/^v\d/i.test(l)) || lines[0] || '').slice(0, 80);
+          map.set(id, { id, title });
         });
       };
       grab();
