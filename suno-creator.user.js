@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Suno Creator
 // @namespace    hwiiza.suno
-// @version      0.2.5
+// @version      0.2.6
 // @description  SunoのCreate画面にパネルを表示し、JSON(1曲/配列)から曲を生成・連続生成。曲のMP3一括/個別ダウンロードも対応。
 // @match        https://suno.com/*
 // @match        https://www.suno.com/*
@@ -27,6 +27,28 @@
   const getWidth = () => { const v = parseInt(localStorage.getItem(WIDTH_KEY) || '', 10); return Number.isFinite(v) && v >= 300 ? v : 380; };
   const setWidthLS = (v) => localStorage.setItem(WIDTH_KEY, String(v));
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  // ---- タブ抑制/凍結の緩和 ----
+  // 最小化・バックグラウンド時、Chromeはタイマーを抑制/凍結する。無音のWebAudioを鳴らして
+  // 「音声再生中」扱いにし凍結を防ぐ（完全には防げない＝可能ならウィンドウは表示のまま推奨）。
+  let _keepCtx = null, _keepOsc = null;
+  function keepAliveStart() {
+    try {
+      if (_keepCtx) return;
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      _keepCtx = new AC();
+      const g = _keepCtx.createGain(); g.gain.value = 0.0001;
+      _keepOsc = _keepCtx.createOscillator(); _keepOsc.frequency.value = 30;
+      _keepOsc.connect(g); g.connect(_keepCtx.destination); _keepOsc.start();
+      if (_keepCtx.state === 'suspended') _keepCtx.resume();
+    } catch (_) {}
+  }
+  function keepAliveStop() {
+    try { if (_keepOsc) _keepOsc.stop(); } catch (_) {}
+    try { if (_keepCtx) _keepCtx.close(); } catch (_) {}
+    _keepOsc = _keepCtx = null;
+  }
 
   // ---- 保存先(File System Access API)・DL ヘルパー ----
   // 選んだフォルダのハンドルを IndexedDB に保存して次回も使う
@@ -454,11 +476,11 @@
       if (busy) return;
       const s = songs[i], err = validate(s);
       if (err) { log(`✖ #${i + 1}: ${err}`); return; }
-      busy = true; $('#sc-run').disabled = true;
+      busy = true; $('#sc-run').disabled = true; keepAliveStart();
       setStatus(i, 'submitting'); log('生成: ' + (s.title || '#' + (i + 1)));
       try { const ok = await generateOne(s, log); setStatus(i, ok ? 'submitted' : 'failed'); }
       catch (e) { setStatus(i, 'failed'); log('✖ ' + e.message); }
-      finally { busy = false; $('#sc-run').disabled = false; }
+      finally { keepAliveStop(); busy = false; $('#sc-run').disabled = false; }
     }
 
     // ---- ハンドラ ----
@@ -491,8 +513,9 @@
       for (let i = 0; i < songs.length; i++) { const e = validate(songs[i]); if (e) { log(`✖ #${i + 1}: ${e}`); return; } }
       const wait = getWait();
       const inflight = [];   // 投入時刻(直近INFLIGHT_SECを生成中とみなす)
-      busy = true; $('#sc-run').disabled = true;
+      busy = true; $('#sc-run').disabled = true; keepAliveStart();
       log(`— ${songs.length}曲 連続生成（間隔${wait}秒 / 同時上限${MAX_CONCURRENT}曲）—`);
+      log('※ 生成中はChromeを最小化しないでください（ブラウザがタイマーを止めます）');
       try {
         for (let i = 0; i < songs.length; i++) {
           // 同時生成が上限なら枠が空く(推定)まで待機
@@ -509,7 +532,7 @@
         }
         log('✅ 完了（Suno側で生成中）');
       } catch (e) { log('✖ ' + e.message); }
-      finally { busy = false; $('#sc-run').disabled = false; }
+      finally { keepAliveStop(); busy = false; $('#sc-run').disabled = false; }
     });
 
     // ===== タブ切替 =====
@@ -603,7 +626,7 @@
       if (busy) return;
       const list = indices.filter((i) => clips[i]);
       if (!list.length) return;
-      busy = true; $('#sc-dlsel').disabled = true; $('#sc-lib').disabled = true;
+      busy = true; $('#sc-dlsel').disabled = true; $('#sc-lib').disabled = true; keepAliveStart();
       // フォルダ指定があれば権限確保(クリックのジェスチャ中に確認)。無理ならDLフォルダへ。
       let useDir = false;
       if (dirHandle) { useDir = await ensurePerm(dirHandle); if (!useDir) log('⚠ フォルダ権限なし→ダウンロードフォルダに保存'); }
@@ -626,6 +649,7 @@
         renderDlList();
         await sleep(300);
       }
+      keepAliveStop();
       busy = false; $('#sc-dlsel').disabled = false; $('#sc-lib').disabled = false;
       log('✅ DL完了');
     }
