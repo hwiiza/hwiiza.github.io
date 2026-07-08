@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube 概要欄フィラー (yt-filler)
 // @namespace    hwiiza.yt-filler
-// @version      1.16
+// @version      1.17
 // @description  指定フォーマットの .txt を読み込み、YouTube Studio のタイトル/概要欄/タグ/AI開示を自動入力する（チャンネル非依存の汎用ツール）
 // @match        https://studio.youtube.com/*
 // @run-at       document-idle
@@ -191,8 +191,9 @@
     log('✖ サムネ画像が未読込。' + hint + '（一度選べば次回以降は自動再利用）', true);
     return false;
   }
-  // AI開示「AIの使用」（旧「改変または合成コンテンツ」）に「いいえ」を設定
-  // Crimson Hours等の完全架空コンテンツはYouTubeポリシー3条件（実在人物成りすまし/実映像改変/実イベント風生成）非該当のため「いいえ」が正解
+  // AI開示「AIの使用」（旧「改変または合成コンテンツ」）に「はい」を設定
+  // YouTube公式ヘルプ(support.google.com/youtube/answer/14328491)で「AI生成の音楽」が
+  // 開示必要コンテンツの例に明示。Suno等でAI楽曲を使う場合は「はい」が正解
   // UIパターン: (A) インラインラジオ / (B) 「編集」ボタン → モーダルダイアログ内のラジオ
   async function setAIDisclosure(log) {
     // Step 1: 詳細ページの「すべて表示」を展開（AI開示欄は下部にあることが多い）
@@ -242,14 +243,14 @@
       if (dialog) { scope = dialog; modalOpened = true; log('… AI開示ダイアログを開いた'); }
     }
 
-    // Step 4: 「いいえ」ラジオボタンをクリック（テキスト完全一致で誤クリック回避）
+    // Step 4: 「はい」ラジオボタンをクリック（テキスト完全一致で誤クリック回避）
     const radios = [...scope.querySelectorAll('tp-yt-paper-radio-button, [role="radio"]')];
-    const noRadio = radios.find(r => isVisible(r) && /^\s*(いいえ|No)\s*$/i.test((r.textContent || '').trim()));
-    if (!noRadio) {
-      log('✖ 「いいえ」ラジオが見つかりません（UI変更の可能性・手動確認してください）', true);
+    const yesRadio = radios.find(r => isVisible(r) && /^\s*(はい|Yes)\s*$/i.test((r.textContent || '').trim()));
+    if (!yesRadio) {
+      log('✖ 「はい」ラジオが見つかりません（UI変更の可能性・手動確認してください）', true);
       return false;
     }
-    noRadio.click();
+    yesRadio.click();
     await sleep(300);
 
     // Step 5: モーダル方式なら保存
@@ -263,7 +264,7 @@
       else { log('△ 保存ボタンが見つかりません。手動で保存してください', true); }
     }
 
-    log('✔ AI開示:「いいえ」を設定');
+    log('✔ AI開示:「はい」を設定');
     return true;
   }
 
@@ -308,7 +309,7 @@
     const grid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:5px' }, [
       mkBtn('title', 'タイトル'), mkBtn('desc', '概要欄'),
       mkBtn('tags', 'タグ'), mkBtn('thumb', 'サムネ'),
-      mkBtn('kids', '子供向けでない'), mkBtn('ai', 'AI開示(いいえ)'),
+      mkBtn('kids', '子供向けでない'), mkBtn('ai', 'AI開示(はい)'),
       mkBtn('all', '全部設定', 'grid-column:1/-1;background:#c00;border-color:#c00'),
     ]);
     const logDiv = el('div', { id: 'cyt-log', style: 'flex-shrink:0;height:120px;overflow:auto;background:#000;padding:5px;border-radius:5px' });
