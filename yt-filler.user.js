@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube 概要欄フィラー (yt-filler)
 // @namespace    hwiiza.yt-filler
-// @version      1.17
+// @version      1.18
 // @description  指定フォーマットの .txt を読み込み、YouTube Studio のタイトル/概要欄/タグ/AI開示を自動入力する（チャンネル非依存の汎用ツール）
 // @match        https://studio.youtube.com/*
 // @run-at       document-idle
@@ -196,36 +196,66 @@
   // 開示必要コンテンツの例に明示。Suno等でAI楽曲を使う場合は「はい」が正解
   // UIパターン: (A) インラインラジオ / (B) 「編集」ボタン → モーダルダイアログ内のラジオ
   async function setAIDisclosure(log) {
-    // Step 1: 詳細ページの「すべて表示」を展開（AI開示欄は下部にあることが多い）
+    // Step 1: 展開ボタンがあれば押す（現行UIでは初期展開状態なので通常スキップされる）
     const expandBtn = [...document.querySelectorAll('ytcp-button-shape button, ytcp-button, tp-yt-paper-button, button, [role="button"]')]
       .find(b => isVisible(b) && /^\s*(すべて表示|もっと見る|Show more|More options)\s*$/i.test((b.textContent || '').trim()));
     if (expandBtn) { expandBtn.click(); await sleep(500); log('… 詳細エリアを展開'); }
 
-    // Step 2: 見出しテキストからAI開示セクションを探す（複数UIバリエーション対応）
+    // Step 2: 見出しテキストからAI開示セクションを探す
     const headTexts = ['AIの使用', 'Use of AI', 'AI usage', '改変または合成コンテンツ', 'Altered or synthetic content'];
+
+    // 戦略A: textContentが見出し文字列と完全一致する最小要素（=最深要素）を探す
+    const findByTextContent = (target) => {
+      const matches = [...document.querySelectorAll('*')].filter(el => {
+        if (!isVisible(el)) return false;
+        return (el.textContent || '').trim() === target;
+      });
+      if (!matches.length) return null;
+      // textContentが最短のもの＝深い要素＝見出しそのものを優先
+      return matches.reduce((a, b) => ((a.textContent || '').length <= (b.textContent || '').length ? a : b));
+    };
+
     let heading = null;
     for (const t of headTexts) {
-      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT, {
-        acceptNode: (n) => {
-          if (!isVisible(n)) return NodeFilter.FILTER_SKIP;
-          const own = [...n.childNodes].filter(c => c.nodeType === 3).map(c => c.textContent).join('').trim();
-          return own === t ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
-        }
-      });
-      const n = walker.nextNode();
-      if (n) { heading = n; break; }
+      heading = findByTextContent(t);
+      if (heading) break;
     }
+
+    // 戦略B: 見出しが取れなかったら、はい/いいえラジオペアから逆引き
+    // 「はい」ラジオを起点に祖先をたどり、textContentに見出し文字列を含む最小セクションを特定
     if (!heading) {
-      log('✖ 「AIの使用」セクションが見つかりません（詳細画面で「すべて表示」を押した状態にしてください）', true);
+      const yesRadios = [...document.querySelectorAll('tp-yt-paper-radio-button, [role="radio"]')]
+        .filter(r => isVisible(r) && /^\s*(はい|Yes)\s*$/i.test((r.textContent || '').trim()));
+      for (const yes of yesRadios) {
+        let anc = yes.parentElement;
+        for (let i = 0; i < 15 && anc; i++) {
+          const txt = (anc.textContent || '').trim();
+          if (headTexts.some(h => txt.includes(h))) {
+            // このセクション内に「いいえ」ラジオも同居していれば確定
+            const hasNo = [...anc.querySelectorAll('tp-yt-paper-radio-button, [role="radio"]')]
+              .some(r => isVisible(r) && /^\s*(いいえ|No)\s*$/i.test((r.textContent || '').trim()));
+            if (hasNo) { heading = anc; break; }
+          }
+          anc = anc.parentElement;
+        }
+        if (heading) break;
+      }
+    }
+
+    if (!heading) {
+      log('✖ 「AIの使用」セクション見出しが見つかりません（詳細画面をリロードして再試行してください）', true);
       return false;
     }
-    // 見出しの祖先を上へたどり、インタラクティブ要素を含むセクション境界を得る
+
+    // 見出しの祖先を上へたどり、はい/いいえラジオを両方含むセクション境界を得る
     let section = heading;
-    for (let i = 0; i < 10; i++) {
-      const p = section.parentElement;
-      if (!p) break;
-      section = p;
-      if (section.querySelector('tp-yt-paper-radio-button, [role="radio"], ytcp-button, button')) break;
+    for (let i = 0; i < 12; i++) {
+      const radios = [...section.querySelectorAll('tp-yt-paper-radio-button, [role="radio"]')];
+      const hasYes = radios.some(r => isVisible(r) && /^\s*(はい|Yes)\s*$/i.test((r.textContent || '').trim()));
+      const hasNo  = radios.some(r => isVisible(r) && /^\s*(いいえ|No)\s*$/i.test((r.textContent || '').trim()));
+      if (hasYes && hasNo) break;
+      if (!section.parentElement) break;
+      section = section.parentElement;
     }
     try { section.scrollIntoView({ block: 'center' }); } catch (e) {}
     await sleep(300);
