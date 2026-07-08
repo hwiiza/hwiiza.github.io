@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         YouTube 概要欄フィラー (yt-filler)
 // @namespace    hwiiza.yt-filler
-// @version      1.14
-// @description  指定フォーマットの .txt を読み込み、YouTube Studio のタイトル/概要欄/タグを自動入力する（チャンネル非依存の汎用ツール）
+// @version      1.15
+// @description  指定フォーマットの .txt を読み込み、YouTube Studio のタイトル/概要欄/タグ/AI開示を自動入力する（チャンネル非依存の汎用ツール）
 // @match        https://studio.youtube.com/*
 // @run-at       document-idle
 // @grant        GM_setValue
@@ -191,6 +191,81 @@
     log('✖ サムネ画像が未読込。' + hint + '（一度選べば次回以降は自動再利用）', true);
     return false;
   }
+  // AI開示「改変または合成コンテンツ」に「はい」を設定
+  // UIパターン: (A) インラインラジオ / (B) 「編集」ボタン → モーダルダイアログ内のラジオ
+  async function setAIDisclosure(log) {
+    // Step 1: 詳細ページの「すべて表示」を展開（AI開示欄は下部にあることが多い）
+    const expandBtn = [...document.querySelectorAll('ytcp-button-shape button, ytcp-button, tp-yt-paper-button, button, [role="button"]')]
+      .find(b => isVisible(b) && /^\s*(すべて表示|もっと見る|Show more|More options)\s*$/i.test((b.textContent || '').trim()));
+    if (expandBtn) { expandBtn.click(); await sleep(500); log('… 詳細エリアを展開'); }
+
+    // Step 2: 「改変または合成コンテンツ」見出しを含むセクションを探す
+    const headTexts = ['改変または合成コンテンツ', 'Altered or synthetic content'];
+    let heading = null;
+    for (const t of headTexts) {
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT, {
+        acceptNode: (n) => {
+          if (!isVisible(n)) return NodeFilter.FILTER_SKIP;
+          const own = [...n.childNodes].filter(c => c.nodeType === 3).map(c => c.textContent).join('').trim();
+          return own === t ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+        }
+      });
+      const n = walker.nextNode();
+      if (n) { heading = n; break; }
+    }
+    if (!heading) {
+      log('✖ 「改変または合成コンテンツ」セクションが見つかりません（詳細画面で「すべて表示」を押した状態にしてください）', true);
+      return false;
+    }
+    // 見出しの祖先を上へたどり、インタラクティブ要素を含むセクション境界を得る
+    let section = heading;
+    for (let i = 0; i < 10; i++) {
+      const p = section.parentElement;
+      if (!p) break;
+      section = p;
+      if (section.querySelector('tp-yt-paper-radio-button, [role="radio"], ytcp-button, button')) break;
+    }
+    try { section.scrollIntoView({ block: 'center' }); } catch (e) {}
+    await sleep(300);
+
+    // Step 3: セクション内に「編集」ボタンがあればモーダル方式（クリックしてダイアログを開く）
+    const editBtn = [...section.querySelectorAll('ytcp-button, tp-yt-paper-button, button, [role="button"]')]
+      .find(b => isVisible(b) && /^\s*(編集|変更|Edit|Change)\s*$/i.test((b.textContent || '').trim()));
+    let scope = section;
+    let modalOpened = false;
+    if (editBtn) {
+      editBtn.click();
+      await sleep(600);
+      const dialog = [...document.querySelectorAll('tp-yt-paper-dialog, ytcp-dialog, [role="dialog"]')]
+        .find(d => isVisible(d));
+      if (dialog) { scope = dialog; modalOpened = true; log('… AI開示ダイアログを開いた'); }
+    }
+
+    // Step 4: 「はい」ラジオボタンをクリック（テキスト完全一致で誤クリック回避）
+    const radios = [...scope.querySelectorAll('tp-yt-paper-radio-button, [role="radio"]')];
+    const yesRadio = radios.find(r => isVisible(r) && /^\s*(はい|Yes)\s*$/i.test((r.textContent || '').trim()));
+    if (!yesRadio) {
+      log('✖ 「はい」ラジオが見つかりません（UI変更の可能性・手動確認してください）', true);
+      return false;
+    }
+    yesRadio.click();
+    await sleep(300);
+
+    // Step 5: モーダル方式なら保存
+    if (modalOpened) {
+      await sleep(200);
+      const saveBtn = [...document.querySelectorAll('tp-yt-paper-dialog, ytcp-dialog, [role="dialog"]')]
+        .filter(d => isVisible(d))
+        .flatMap(d => [...d.querySelectorAll('ytcp-button, tp-yt-paper-button, button, [role="button"]')])
+        .find(b => isVisible(b) && /^\s*(保存|完了|Save|Done)\s*$/i.test((b.textContent || '').trim()));
+      if (saveBtn) { saveBtn.click(); await sleep(400); log('✔ AI開示ダイアログを保存'); }
+      else { log('△ 保存ボタンが見つかりません。手動で保存してください', true); }
+    }
+
+    log('✔ AI開示:「はい」を設定');
+    return true;
+  }
+
   // 対象視聴者「いいえ、子ども向けではありません」を選択
   function setNotForKids(log) {
     let el = document.querySelector('tp-yt-paper-radio-button[name="VIDEO_MADE_FOR_KIDS_NOT_MFK"]');
@@ -230,9 +305,10 @@
     const infoDiv = el('div', { id: 'cyt-info', text: '未読込', style: 'font-size:11px;color:#aaa;white-space:pre-wrap;min-height:34px;background:#000;padding:5px;border-radius:5px' });
     const mkBtn = (act, txt, extra) => el('button', Object.assign({ 'data-act': act, class: 'cyt-b', text: txt }, extra ? { style: extra } : {}));
     const grid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:5px' }, [
-      mkBtn('title', 'タイトル'), mkBtn('desc', '概要欄'), mkBtn('tags', 'タグ'),
-      mkBtn('thumb', 'サムネ'), mkBtn('kids', '子供向けでない'),
-      mkBtn('all', '全部設定', 'background:#c00;border-color:#c00'),
+      mkBtn('title', 'タイトル'), mkBtn('desc', '概要欄'),
+      mkBtn('tags', 'タグ'), mkBtn('thumb', 'サムネ'),
+      mkBtn('kids', '子供向けでない'), mkBtn('ai', 'AI開示(はい)'),
+      mkBtn('all', '全部設定', 'grid-column:1/-1;background:#c00;border-color:#c00'),
     ]);
     const logDiv = el('div', { id: 'cyt-log', style: 'flex-shrink:0;height:120px;overflow:auto;background:#000;padding:5px;border-radius:5px' });
     const bodyDiv = el('div', { id: 'cyt-body' }, [label, thumbLabel, thumbPreview, infoDiv, grid, logDiv]);
@@ -390,6 +466,7 @@
       else if (act === 'tags') await setTags(data, log);
       else if (act === 'thumb') setThumbnail(thumbFile, data, log);
       else if (act === 'kids') setNotForKids(log);
+      else if (act === 'ai') await setAIDisclosure(log);
       else if (act === 'all') {
         setTitle(data, log);
         await sleep(300);
@@ -398,6 +475,8 @@
         await setTags(data, log);
         await sleep(300);
         setNotForKids(log);
+        await sleep(300);
+        await setAIDisclosure(log);
         if (thumbFile || (data && data.thumbnail)) { await sleep(300); setThumbnail(thumbFile, data, log); }
       }
     }));
