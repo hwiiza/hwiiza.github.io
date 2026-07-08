@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube 概要欄フィラー (yt-filler)
 // @namespace    hwiiza.yt-filler
-// @version      1.15
+// @version      1.16
 // @description  指定フォーマットの .txt を読み込み、YouTube Studio のタイトル/概要欄/タグ/AI開示を自動入力する（チャンネル非依存の汎用ツール）
 // @match        https://studio.youtube.com/*
 // @run-at       document-idle
@@ -191,7 +191,8 @@
     log('✖ サムネ画像が未読込。' + hint + '（一度選べば次回以降は自動再利用）', true);
     return false;
   }
-  // AI開示「改変または合成コンテンツ」に「はい」を設定
+  // AI開示「AIの使用」（旧「改変または合成コンテンツ」）に「いいえ」を設定
+  // Crimson Hours等の完全架空コンテンツはYouTubeポリシー3条件（実在人物成りすまし/実映像改変/実イベント風生成）非該当のため「いいえ」が正解
   // UIパターン: (A) インラインラジオ / (B) 「編集」ボタン → モーダルダイアログ内のラジオ
   async function setAIDisclosure(log) {
     // Step 1: 詳細ページの「すべて表示」を展開（AI開示欄は下部にあることが多い）
@@ -199,8 +200,8 @@
       .find(b => isVisible(b) && /^\s*(すべて表示|もっと見る|Show more|More options)\s*$/i.test((b.textContent || '').trim()));
     if (expandBtn) { expandBtn.click(); await sleep(500); log('… 詳細エリアを展開'); }
 
-    // Step 2: 「改変または合成コンテンツ」見出しを含むセクションを探す
-    const headTexts = ['改変または合成コンテンツ', 'Altered or synthetic content'];
+    // Step 2: 見出しテキストからAI開示セクションを探す（複数UIバリエーション対応）
+    const headTexts = ['AIの使用', 'Use of AI', 'AI usage', '改変または合成コンテンツ', 'Altered or synthetic content'];
     let heading = null;
     for (const t of headTexts) {
       const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT, {
@@ -214,7 +215,7 @@
       if (n) { heading = n; break; }
     }
     if (!heading) {
-      log('✖ 「改変または合成コンテンツ」セクションが見つかりません（詳細画面で「すべて表示」を押した状態にしてください）', true);
+      log('✖ 「AIの使用」セクションが見つかりません（詳細画面で「すべて表示」を押した状態にしてください）', true);
       return false;
     }
     // 見出しの祖先を上へたどり、インタラクティブ要素を含むセクション境界を得る
@@ -241,14 +242,14 @@
       if (dialog) { scope = dialog; modalOpened = true; log('… AI開示ダイアログを開いた'); }
     }
 
-    // Step 4: 「はい」ラジオボタンをクリック（テキスト完全一致で誤クリック回避）
+    // Step 4: 「いいえ」ラジオボタンをクリック（テキスト完全一致で誤クリック回避）
     const radios = [...scope.querySelectorAll('tp-yt-paper-radio-button, [role="radio"]')];
-    const yesRadio = radios.find(r => isVisible(r) && /^\s*(はい|Yes)\s*$/i.test((r.textContent || '').trim()));
-    if (!yesRadio) {
-      log('✖ 「はい」ラジオが見つかりません（UI変更の可能性・手動確認してください）', true);
+    const noRadio = radios.find(r => isVisible(r) && /^\s*(いいえ|No)\s*$/i.test((r.textContent || '').trim()));
+    if (!noRadio) {
+      log('✖ 「いいえ」ラジオが見つかりません（UI変更の可能性・手動確認してください）', true);
       return false;
     }
-    yesRadio.click();
+    noRadio.click();
     await sleep(300);
 
     // Step 5: モーダル方式なら保存
@@ -262,7 +263,7 @@
       else { log('△ 保存ボタンが見つかりません。手動で保存してください', true); }
     }
 
-    log('✔ AI開示:「はい」を設定');
+    log('✔ AI開示:「いいえ」を設定');
     return true;
   }
 
@@ -307,7 +308,7 @@
     const grid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:5px' }, [
       mkBtn('title', 'タイトル'), mkBtn('desc', '概要欄'),
       mkBtn('tags', 'タグ'), mkBtn('thumb', 'サムネ'),
-      mkBtn('kids', '子供向けでない'), mkBtn('ai', 'AI開示(はい)'),
+      mkBtn('kids', '子供向けでない'), mkBtn('ai', 'AI開示(いいえ)'),
       mkBtn('all', '全部設定', 'grid-column:1/-1;background:#c00;border-color:#c00'),
     ]);
     const logDiv = el('div', { id: 'cyt-log', style: 'flex-shrink:0;height:120px;overflow:auto;background:#000;padding:5px;border-radius:5px' });
