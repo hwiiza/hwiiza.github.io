@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Suno Creator
 // @namespace    hwiiza.suno
-// @version      0.2.6
+// @version      0.2.7
 // @description  SunoのCreate画面にパネルを表示し、JSON(1曲/配列)から曲を生成・連続生成。曲のMP3一括/個別ダウンロードも対応。
 // @match        https://suno.com/*
 // @match        https://www.suno.com/*
@@ -117,6 +117,14 @@
     el.dispatchEvent(new Event('input', { bubbles: true }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
   }
+  // contenteditable(Lexical等)の歌詞エディタに投入。全選択→pasteで置換(改行が保たれる)。
+  function setEditableText(el, text) {
+    el.focus();
+    const sel = window.getSelection(); const r = document.createRange();
+    r.selectNodeContents(el); sel.removeAllRanges(); sel.addRange(r);
+    const dt = new DataTransfer(); dt.setData('text/plain', text);
+    el.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: dt }));
+  }
 
   // ---- Suno UI 操作 ----
   function ensureAdvanced() { const adv = byText('button', 'Advanced'); if (adv) adv.click(); }
@@ -125,8 +133,14 @@
     const mo = byText('div', 'More Options') || byText('button', 'More Options');
     if (mo) mo.click();
   }
-  function getLyrics() { return firstVisible('textarea[data-testid="lyrics-textarea"]'); }
-  function getStyle() { for (const t of document.querySelectorAll('textarea:not([data-testid="lyrics-textarea"])')) if (isVisible(t)) return t; return null; }
+  // 歌詞欄: 2026-06以降は contenteditable(.lyrics-editor-content)。旧textareaもフォールバックで対応。
+  function getLyrics() { return document.querySelector('.lyrics-editor-content') || document.querySelector('[aria-label="Lyrics editor"]') || firstVisible('textarea[data-testid="lyrics-textarea"]'); }
+  function getStyle() {
+    const w = document.querySelector('[data-testid="create-form-styles-wrapper"] textarea');
+    if (w && isVisible(w)) return w;
+    for (const t of document.querySelectorAll('textarea:not([data-testid="lyrics-textarea"])')) if (isVisible(t)) return t;
+    return null;
+  }
   function getTitle() { return firstVisible('input[placeholder="Song Title (Optional)"]'); }
   function getCreate() { return firstVisible('button[aria-label="Create song"]') || byText('button', 'Create'); }
   function setVocal(gender) {
@@ -161,7 +175,12 @@
       await sleep(300);
     } else if (song.lyrics) {
       const lyr = getLyrics();
-      if (lyr) setNativeValue(lyr, song.lyrics); else log('⚠ 歌詞欄が見つからない');
+      if (!lyr) { log('⚠ 歌詞欄が見つからない'); }
+      else if (lyr.isContentEditable) {
+        lyr.focus(); lyr.click(); await sleep(150);
+        setEditableText(lyr, song.lyrics); await sleep(200);
+        if (!(lyr.innerText || '').trim()) { setEditableText(lyr, song.lyrics); await sleep(150); }  // 初回失敗時リトライ
+      } else { setNativeValue(lyr, song.lyrics); }
     }
     if (song.style) { const st = getStyle(); if (st) setNativeValue(st, song.style); else log('⚠ スタイル欄が見つからない'); }
     if (song.title) { const ti = getTitle(); if (ti) setNativeValue(ti, song.title); }
@@ -410,7 +429,10 @@
       const w = s.weirdness != null ? Number(s.weirdness) : 50;
       const si = s.styleInfluence != null ? Number(s.styleInfluence) : 50;
       el.innerHTML = `
-        <button id="d-gen" class="primary" style="width:100%;margin-bottom:11px;">この曲を生成</button>
+        <div class="row" style="margin-bottom:11px;">
+          <button id="d-gen" class="primary" style="flex:1;">この曲を生成</button>
+          <button id="d-fill" title="生成せずフォームに入力だけ（テスト用）">入力のみ</button>
+        </div>
         <div class="dttl" id="d-head"></div>
         <div class="fld"><label>Title</label><input type="text" id="d-title"></div>
         <div class="fld"><label>Style</label><input type="text" id="d-style"></div>
@@ -446,6 +468,7 @@
       $('#d-sinf').addEventListener('input', () => { $('#d-sv').textContent = $('#d-sinf').value; upd(); });
       $('#d-inst').addEventListener('change', () => { upd(); syncInst(); });
       $('#d-gen').addEventListener('click', () => genIndex(sel));
+      $('#d-fill').addEventListener('click', () => fillOnly(sel));
     }
 
     function select(i) { sel = i; renderList(); renderDetail(); }
@@ -481,6 +504,18 @@
       try { const ok = await generateOne(s, log); setStatus(i, ok ? 'submitted' : 'failed'); }
       catch (e) { setStatus(i, 'failed'); log('✖ ' + e.message); }
       finally { keepAliveStop(); busy = false; $('#sc-run').disabled = false; }
+    }
+
+    // 生成せずフォームに入力だけ（lyrics反映などのテスト用）
+    async function fillOnly(i) {
+      if (busy) return;
+      const s = songs[i], err = validate(s);
+      if (err) { log(`✖ #${i + 1}: ${err}`); return; }
+      busy = true; $('#sc-run').disabled = true;
+      log('入力のみ（生成しない）: ' + (s.title || '#' + (i + 1)));
+      try { await fillSong(s, log); log('✅ 入力完了（Createは押していません。Suno画面で反映を確認）'); }
+      catch (e) { log('✖ ' + e.message); }
+      finally { busy = false; $('#sc-run').disabled = false; }
     }
 
     // ---- ハンドラ ----
