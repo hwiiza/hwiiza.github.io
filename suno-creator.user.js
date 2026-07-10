@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Suno Creator
 // @namespace    hwiiza.suno
-// @version      0.2.7
+// @version      0.2.8
 // @description  SunoのCreate画面にパネルを表示し、JSON(1曲/配列)から曲を生成・連続生成。曲のMP3一括/個別ダウンロードも対応。
 // @match        https://suno.com/*
 // @match        https://www.suno.com/*
@@ -117,11 +117,14 @@
     el.dispatchEvent(new Event('input', { bubbles: true }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
   }
-  // contenteditable(Lexical等)の歌詞エディタに投入。全選択→pasteで置換(改行が保たれる)。
-  function setEditableText(el, text) {
+  // contenteditable(Lexical等)の歌詞エディタに投入。全選択→selectionchangeでLexicalの選択を同期→pasteで置換。
+  // ※selectionchangeを挟まないとLexicalが手動DOM選択を無視し、末尾に「追記」になる。
+  async function setEditableText(el, text) {
     el.focus();
     const sel = window.getSelection(); const r = document.createRange();
     r.selectNodeContents(el); sel.removeAllRanges(); sel.addRange(r);
+    document.dispatchEvent(new Event('selectionchange'));
+    await sleep(40);
     const dt = new DataTransfer(); dt.setData('text/plain', text);
     el.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: dt }));
   }
@@ -178,8 +181,8 @@
       if (!lyr) { log('⚠ 歌詞欄が見つからない'); }
       else if (lyr.isContentEditable) {
         lyr.focus(); lyr.click(); await sleep(150);
-        setEditableText(lyr, song.lyrics); await sleep(200);
-        if (!(lyr.innerText || '').trim()) { setEditableText(lyr, song.lyrics); await sleep(150); }  // 初回失敗時リトライ
+        await setEditableText(lyr, song.lyrics); await sleep(200);
+        if (!(lyr.innerText || '').trim()) { await setEditableText(lyr, song.lyrics); await sleep(150); }  // 初回失敗時リトライ
       } else { setNativeValue(lyr, song.lyrics); }
     }
     if (song.style) { const st = getStyle(); if (st) setNativeValue(st, song.style); else log('⚠ スタイル欄が見つからない'); }
