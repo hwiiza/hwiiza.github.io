@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube 概要欄フィラー (yt-filler)
 // @namespace    hwiiza.yt-filler
-// @version      1.19
+// @version      1.20
 // @description  指定フォーマットの .txt を読み込み、YouTube Studio のタイトル/概要欄/タグ/AI開示を自動入力する（チャンネル非依存の汎用ツール）
 // @match        https://studio.youtube.com/*
 // @run-at       document-idle
@@ -198,8 +198,15 @@
   async function setAIDisclosure(log) {
     const norm = (s) => (s || '').replace(/\s+/g, '');
 
-    // 戦略0: 専用コンポーネントを直接検出（2026-07現在のUI。実DOMで確認済み）
-    let section = document.querySelector('ytkp-altered-content-select, ytcp-video-metadata-altered-content');
+    // 戦略0: 専用コンポーネントを直接検出（2026-07現在のUI。編集画面/アップロードダイアログ両方で確認済み）
+    // アップロード開始直後はセクションが未レンダリングのため、最大12秒ポーリングして出現を待つ
+    let section = null;
+    for (let i = 0; i < 24; i++) {
+      section = document.querySelector('ytkp-altered-content-select, ytcp-video-metadata-altered-content');
+      if (section) break;
+      if (i === 0) log('… 「AIの使用」セクションの表示を待機中（アップロード直後は数秒かかります）');
+      await sleep(500);
+    }
 
     if (!section) {
       // Step 1: 展開ボタンがあれば押す（現行UIでは初期展開状態なので通常スキップされる）
