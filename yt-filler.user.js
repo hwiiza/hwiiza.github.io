@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube 概要欄フィラー (yt-filler)
 // @namespace    hwiiza.yt-filler
-// @version      1.18
+// @version      1.19
 // @description  指定フォーマットの .txt を読み込み、YouTube Studio のタイトル/概要欄/タグ/AI開示を自動入力する（チャンネル非依存の汎用ツール）
 // @match        https://studio.youtube.com/*
 // @run-at       document-idle
@@ -191,71 +191,74 @@
     log('✖ サムネ画像が未読込。' + hint + '（一度選べば次回以降は自動再利用）', true);
     return false;
   }
-  // AI開示「AIの使用」（旧「改変または合成コンテンツ」）に「はい」を設定
+  // AI開示「AI の使用」（旧「改変または合成コンテンツ」）に「はい」を設定
   // YouTube公式ヘルプ(support.google.com/youtube/answer/14328491)で「AI生成の音楽」が
   // 開示必要コンテンツの例に明示。Suno等でAI楽曲を使う場合は「はい」が正解
-  // UIパターン: (A) インラインラジオ / (B) 「編集」ボタン → モーダルダイアログ内のラジオ
+  // 注意: 実UIの見出しは「AI の使用」(スペース入り)のため、テキスト比較は全て空白除去で正規化する
   async function setAIDisclosure(log) {
-    // Step 1: 展開ボタンがあれば押す（現行UIでは初期展開状態なので通常スキップされる）
-    const expandBtn = [...document.querySelectorAll('ytcp-button-shape button, ytcp-button, tp-yt-paper-button, button, [role="button"]')]
-      .find(b => isVisible(b) && /^\s*(すべて表示|もっと見る|Show more|More options)\s*$/i.test((b.textContent || '').trim()));
-    if (expandBtn) { expandBtn.click(); await sleep(500); log('… 詳細エリアを展開'); }
+    const norm = (s) => (s || '').replace(/\s+/g, '');
 
-    // Step 2: 見出しテキストからAI開示セクションを探す
-    const headTexts = ['AIの使用', 'Use of AI', 'AI usage', '改変または合成コンテンツ', 'Altered or synthetic content'];
+    // 戦略0: 専用コンポーネントを直接検出（2026-07現在のUI。実DOMで確認済み）
+    let section = document.querySelector('ytkp-altered-content-select, ytcp-video-metadata-altered-content');
 
-    // 戦略A: textContentが見出し文字列と完全一致する最小要素（=最深要素）を探す
-    const findByTextContent = (target) => {
-      const matches = [...document.querySelectorAll('*')].filter(el => {
-        if (!isVisible(el)) return false;
-        return (el.textContent || '').trim() === target;
-      });
-      if (!matches.length) return null;
-      // textContentが最短のもの＝深い要素＝見出しそのものを優先
-      return matches.reduce((a, b) => ((a.textContent || '').length <= (b.textContent || '').length ? a : b));
-    };
-
-    let heading = null;
-    for (const t of headTexts) {
-      heading = findByTextContent(t);
-      if (heading) break;
+    if (!section) {
+      // Step 1: 展開ボタンがあれば押す（現行UIでは初期展開状態なので通常スキップされる）
+      const expandBtn = [...document.querySelectorAll('ytcp-button-shape button, ytcp-button, tp-yt-paper-button, button, [role="button"]')]
+        .find(b => isVisible(b) && /^(すべて表示|もっと見る|Showmore|Moreoptions)$/i.test(norm(b.textContent)));
+      if (expandBtn) { expandBtn.click(); await sleep(500); log('… 詳細エリアを展開'); section = document.querySelector('ytkp-altered-content-select, ytcp-video-metadata-altered-content'); }
     }
 
-    // 戦略B: 見出しが取れなかったら、はい/いいえラジオペアから逆引き
-    // 「はい」ラジオを起点に祖先をたどり、textContentに見出し文字列を含む最小セクションを特定
-    if (!heading) {
-      const yesRadios = [...document.querySelectorAll('tp-yt-paper-radio-button, [role="radio"]')]
-        .filter(r => isVisible(r) && /^\s*(はい|Yes)\s*$/i.test((r.textContent || '').trim()));
-      for (const yes of yesRadios) {
-        let anc = yes.parentElement;
-        for (let i = 0; i < 15 && anc; i++) {
-          const txt = (anc.textContent || '').trim();
-          if (headTexts.some(h => txt.includes(h))) {
-            // このセクション内に「いいえ」ラジオも同居していれば確定
-            const hasNo = [...anc.querySelectorAll('tp-yt-paper-radio-button, [role="radio"]')]
-              .some(r => isVisible(r) && /^\s*(いいえ|No)\s*$/i.test((r.textContent || '').trim()));
-            if (hasNo) { heading = anc; break; }
-          }
-          anc = anc.parentElement;
-        }
+    if (!section) {
+      // Step 2: 見出しテキストからAI開示セクションを探す（空白正規化で「AI の使用」も一致）
+      const headTexts = ['AIの使用', 'UseofAI', 'AIusage', '改変または合成コンテンツ', 'Alteredorsyntheticcontent'].map(norm);
+
+      // 戦略A: 正規化textContentが見出し文字列と完全一致する最小要素（=最深要素）を探す
+      const findByTextContent = (target) => {
+        const matches = [...document.querySelectorAll('*')].filter(el => isVisible(el) && norm(el.textContent) === target);
+        if (!matches.length) return null;
+        return matches.reduce((a, b) => ((a.textContent || '').length <= (b.textContent || '').length ? a : b));
+      };
+
+      let heading = null;
+      for (const t of headTexts) {
+        heading = findByTextContent(t);
         if (heading) break;
       }
-    }
 
-    if (!heading) {
-      log('✖ 「AIの使用」セクション見出しが見つかりません（詳細画面をリロードして再試行してください）', true);
-      return false;
-    }
+      // 戦略B: 見出しが取れなかったら、はい/いいえラジオペアから逆引き
+      if (!heading) {
+        const yesRadios = [...document.querySelectorAll('tp-yt-paper-radio-button, [role="radio"]')]
+          .filter(r => isVisible(r) && /^(はい|Yes)$/i.test(norm(r.textContent)));
+        for (const yes of yesRadios) {
+          let anc = yes.parentElement;
+          for (let i = 0; i < 15 && anc; i++) {
+            const txt = norm(anc.textContent);
+            if (headTexts.some(h => txt.includes(h))) {
+              const hasNo = [...anc.querySelectorAll('tp-yt-paper-radio-button, [role="radio"]')]
+                .some(r => isVisible(r) && /^(いいえ|No)$/i.test(norm(r.textContent)));
+              if (hasNo) { heading = anc; break; }
+            }
+            anc = anc.parentElement;
+          }
+          if (heading) break;
+        }
+      }
 
-    // 見出しの祖先を上へたどり、はい/いいえラジオを両方含むセクション境界を得る
-    let section = heading;
-    for (let i = 0; i < 12; i++) {
-      const radios = [...section.querySelectorAll('tp-yt-paper-radio-button, [role="radio"]')];
-      const hasYes = radios.some(r => isVisible(r) && /^\s*(はい|Yes)\s*$/i.test((r.textContent || '').trim()));
-      const hasNo  = radios.some(r => isVisible(r) && /^\s*(いいえ|No)\s*$/i.test((r.textContent || '').trim()));
-      if (hasYes && hasNo) break;
-      if (!section.parentElement) break;
-      section = section.parentElement;
+      if (!heading) {
+        log('✖ 「AIの使用」セクション見出しが見つかりません（詳細画面をリロードして再試行してください）', true);
+        return false;
+      }
+
+      // 見出しの祖先を上へたどり、はい/いいえラジオを両方含むセクション境界を得る
+      section = heading;
+      for (let i = 0; i < 12; i++) {
+        const radios = [...section.querySelectorAll('tp-yt-paper-radio-button, [role="radio"]')];
+        const hasYes = radios.some(r => isVisible(r) && /^(はい|Yes)$/i.test(norm(r.textContent)));
+        const hasNo  = radios.some(r => isVisible(r) && /^(いいえ|No)$/i.test(norm(r.textContent)));
+        if (hasYes && hasNo) break;
+        if (!section.parentElement) break;
+        section = section.parentElement;
+      }
     }
     try { section.scrollIntoView({ block: 'center' }); } catch (e) {}
     await sleep(300);
@@ -273,13 +276,14 @@
       if (dialog) { scope = dialog; modalOpened = true; log('… AI開示ダイアログを開いた'); }
     }
 
-    // Step 4: 「はい」ラジオボタンをクリック（テキスト完全一致で誤クリック回避）
+    // Step 4: 「はい」ラジオボタンをクリック（正規化テキスト完全一致で誤クリック回避）
     const radios = [...scope.querySelectorAll('tp-yt-paper-radio-button, [role="radio"]')];
-    const yesRadio = radios.find(r => isVisible(r) && /^\s*(はい|Yes)\s*$/i.test((r.textContent || '').trim()));
+    const yesRadio = radios.find(r => isVisible(r) && /^(はい|Yes)$/i.test(norm(r.textContent)));
     if (!yesRadio) {
       log('✖ 「はい」ラジオが見つかりません（UI変更の可能性・手動確認してください）', true);
       return false;
     }
+    if (yesRadio.getAttribute('aria-checked') === 'true') { log('✔ AI開示: 既に「はい」選択済み'); return true; }
     yesRadio.click();
     await sleep(300);
 
