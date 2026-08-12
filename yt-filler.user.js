@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube 概要欄フィラー (yt-filler)
 // @namespace    hwiiza.yt-filler
-// @version      1.20
+// @version      1.21
 // @description  指定フォーマットの .txt を読み込み、YouTube Studio のタイトル/概要欄/タグ/AI開示を自動入力する（チャンネル非依存の汎用ツール）
 // @match        https://studio.youtube.com/*
 // @run-at       document-idle
@@ -78,6 +78,18 @@
     return first;
   };
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  const normalizeText = (value) => (value || '').replace(/\r\n/g, '\n').replace(/\u00a0/g, ' ').trim();
+  // Studio is an SPA: the upload form is often mounted after this panel is already usable.
+  async function waitFor(find, timeout = 10000) {
+    const until = Date.now() + timeout;
+    let found = null;
+    while (Date.now() < until) {
+      found = find();
+      if (found && isVisible(found)) return found;
+      await sleep(150);
+    }
+    return found;
+  }
 
   // 要素生成ヘルパ（innerHTML不使用＝Trusted Types環境でも安全）
   function el(tag, attrs, kids) {
@@ -95,7 +107,14 @@
   function setNativeValue(el, v) {
     const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
     Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, v);
-    el.dispatchEvent(new Event('input', { bubbles: true }));
+    // Recent Studio inputs may listen for InputEvent metadata, not just a plain Event.
+    try {
+      el.dispatchEvent(new InputEvent('input', {
+        bubbles: true, composed: true, inputType: 'insertText', data: v,
+      }));
+    } catch (e) {
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    }
     el.dispatchEvent(new Event('change', { bubbles: true }));
   }
 
@@ -119,7 +138,15 @@
     sel.addRange(range);
     document.execCommand('delete', false, null);
     document.execCommand('insertText', false, text);
-    el.dispatchEvent(new Event('input', { bubbles: true }));
+    try {
+      el.dispatchEvent(new InputEvent('input', {
+        bubbles: true, composed: true, inputType: 'insertText', data: text,
+      }));
+    } catch (e) {
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+    el.blur();
   }
 
   async function commitTag(input, tag) {
@@ -134,22 +161,32 @@
   }
 
   // ---------- アクション ----------
-  function setTitle(data, log) {
-    const el = getTitleBox();
+  async function setTitle(data, log) {
+    const el = await waitFor(getTitleBox);
     if (!el) { log('✖ タイトル欄が見つかりません（アップロード/詳細編集画面を開いて）', true); return false; }
     setEditable(el, data.title);
+    await sleep(120);
+    if (normalizeText(el.textContent) !== normalizeText(data.title)) {
+      log('✖ タイトルを反映できませんでした。入力欄を一度クリックして再実行してください', true);
+      return false;
+    }
     log('✔ タイトル設定: ' + data.title);
     return true;
   }
-  function setDesc(data, log) {
-    const el = getDescBox();
+  async function setDesc(data, log) {
+    const el = await waitFor(getDescBox);
     if (!el) { log('✖ 概要欄が見つかりません（アップロード/詳細編集画面を開いて）', true); return false; }
     setEditable(el, data.description);
+    await sleep(120);
+    if (normalizeText(el.textContent) !== normalizeText(data.description)) {
+      log('✖ 概要欄を反映できませんでした。入力欄を一度クリックして再実行してください', true);
+      return false;
+    }
     log('✔ 概要欄設定: ' + data.description.length + '文字');
     return true;
   }
   async function setTags(data, log) {
-    const input = getTagsInput();
+    const input = await waitFor(getTagsInput);
     if (!input) { log('✖ タグ入力欄が見つかりません（「すべて表示」を押してタグ欄を表示して）', true); return false; }
     for (const t of data.tags) { await commitTag(input, t); }
     input.dispatchEvent(new Event('blur', { bubbles: true }));
@@ -504,16 +541,16 @@
       if ((act === 'title' || act === 'desc' || act === 'tags' || act === 'all') && !data) {
         log('先に txt を読み込んでください', true); return;
       }
-      if (act === 'title') setTitle(data, log);
-      else if (act === 'desc') setDesc(data, log);
+      if (act === 'title') await setTitle(data, log);
+      else if (act === 'desc') await setDesc(data, log);
       else if (act === 'tags') await setTags(data, log);
       else if (act === 'thumb') setThumbnail(thumbFile, data, log);
       else if (act === 'kids') setNotForKids(log);
       else if (act === 'ai') await setAIDisclosure(log);
       else if (act === 'all') {
-        setTitle(data, log);
+        await setTitle(data, log);
         await sleep(300);
-        setDesc(data, log);
+        await setDesc(data, log);
         await sleep(300);
         await setTags(data, log);
         await sleep(300);
