@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube 概要欄フィラー (yt-filler)
 // @namespace    hwiiza.yt-filler
-// @version      1.21
+// @version      1.22
 // @description  指定フォーマットの .txt を読み込み、YouTube Studio のタイトル/概要欄/タグ/AI開示を自動入力する（チャンネル非依存の汎用ツール）
 // @match        https://studio.youtube.com/*
 // @run-at       document-idle
@@ -162,6 +162,10 @@
 
   // ---------- アクション ----------
   async function setTitle(data, log) {
+    if (!data || !normalizeText(data.title)) {
+      log('✖ タイトルデータが空です。txtのTITLEセクションを確認して再読み込みしてください', true);
+      return false;
+    }
     const el = await waitFor(getTitleBox);
     if (!el) { log('✖ タイトル欄が見つかりません（アップロード/詳細編集画面を開いて）', true); return false; }
     setEditable(el, data.title);
@@ -174,6 +178,10 @@
     return true;
   }
   async function setDesc(data, log) {
+    if (!data || !normalizeText(data.description)) {
+      log('✖ 概要欄データが空です。txtのDESCRIPTIONセクションを確認してください', true);
+      return false;
+    }
     const el = await waitFor(getDescBox);
     if (!el) { log('✖ 概要欄が見つかりません（アップロード/詳細編集画面を開いて）', true); return false; }
     setEditable(el, data.description);
@@ -460,7 +468,7 @@
     const showInfo = () => {
       const lines = [];
       if (data) {
-        lines.push(`Title: ${data.title}`);
+        lines.push(`Title: ${data.title || '（空）'}`);
         lines.push(`Desc: ${data.description.length}字 / Tags: ${data.tags.length}個`);
       }
       if (thumbFile) lines.push('Thumb: ' + thumbFile.name);
@@ -484,7 +492,11 @@
       const r = new FileReader();
       r.onload = () => {
         try {
-          data = parse(r.result);
+          const parsed = parse(r.result);
+          if (!normalizeText(parsed.title)) {
+            throw new Error('TITLEセクションを解析できませんでした（タイトルが空です）');
+          }
+          data = parsed;
           store.set(LS_KEY, JSON.stringify(data));
           showInfo();
           log('✔ 読込OK: ' + f.name);
