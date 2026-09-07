@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Suno Workspace Duration Sum
 // @namespace    https://hwiiza.example
-// @version      1.9
-// @description  Workspace 全曲の再生時間をスクロールで集計（List/Waveform/Grid 全表示モード対応）。右上のバッジを常時表示＆ドラッグ移動＆位置記憶。シングルクリックで集計実行。
+// @version      2.0
+// @description  Workspace の各曲に再生時間を表示し、全曲の合計時間もスクロールで集計（List/Waveform/Grid 全表示モード対応）。右上のバッジを常時表示＆ドラッグ移動＆位置記憶。シングルクリックで集計実行。
 // @match        https://suno.com/*
 // @match        https://www.suno.com/*
 // @run-at       document-end
@@ -18,9 +18,14 @@
 
   const POS_KEY_BADGE = "suno_scrollsum_badge_pos_v1";
   const BADGE_ID = "suno-scrollsum-badge";
+  const DURATION_LABEL_CLASS = "suno-scrollsum-duration";
+  const DURATION_STYLE_ID = "suno-scrollsum-duration-style";
+  const CLIP_SELECTOR =
+    'div[draggable="true"], [data-testid="clip-row"], a[href*="/song/"]';
 
   let observerStarted = false;
   let routeHooked = false;
+  let durationScanScheduled = false;
 
   /* ---------------------------
       Utility functions
@@ -159,26 +164,97 @@
   /* ---------------------------
       Inline data extraction (React fiber based — works in List/Waveform/Grid)
   ----------------------------*/
-  function getClipFromElement(el) {
-    const fiberKey = Object.keys(el).find((k) => k.startsWith("__reactFiber"));
-    if (!fiberKey) return null;
-    let node = el[fiberKey];
-    let depth = 0;
-    while (node && depth < 14) {
-      const mp = node.memoizedProps;
-      if (
-        mp &&
-        mp.clip &&
-        typeof mp.clip === "object" &&
-        mp.clip.id &&
-        mp.clip.metadata &&
-        typeof mp.clip.metadata.duration === "number" &&
-        mp.clip.metadata.duration > 0
-      ) {
-        return mp.clip;
+  function isDurationClip(value) {
+    return (
+      value &&
+      typeof value === "object" &&
+      value.id &&
+      value.metadata &&
+      typeof value.metadata.duration === "number" &&
+      value.metadata.duration > 0
+    );
+  }
+
+  function getClipFromProps(props) {
+    if (!props || typeof props !== "object") return null;
+
+    // Suno の表示モードやコンポーネント更新による props の包み方の差を吸収する。
+    const directCandidates = [
+      props.clip,
+      props.item,
+      props.song,
+      props.data,
+      props.item && props.item.clip,
+      props.song && props.song.clip,
+      props.data && props.data.clip,
+    ];
+    const directClip = directCandidates.find(isDurationClip);
+    if (directClip) return directClip;
+
+    // 名前が変わったラッパーにも対応するため、props の内側だけを浅く・上限付きで探す。
+    // React fiber 本体や巨大な clip オブジェクト全体を再帰走査しない。
+    const queue = [{ value: props, depth: 0 }];
+    const visited = new WeakSet();
+    let checked = 0;
+    while (queue.length && checked < 60) {
+      const current = queue.shift();
+      const value = current.value;
+      if (!value || typeof value !== "object" || visited.has(value)) continue;
+      visited.add(value);
+      checked++;
+
+      if (isDurationClip(value)) return value;
+      if (current.depth >= 2) continue;
+
+      for (const key of Object.keys(value)) {
+        if (key === "children" || key === "ref" || key === "_owner") continue;
+        let child;
+        try {
+          child = value[key];
+        } catch (_error) {
+          continue;
+        }
+        if (isDurationClip(child)) return child;
+        if (child && typeof child === "object") {
+          queue.push({ value: child, depth: current.depth + 1 });
+        }
       }
+    }
+    return null;
+  }
+
+  function getClipFromReactNode(node) {
+    let depth = 0;
+    while (node && depth < 80) {
+      const clip =
+        getClipFromProps(node.memoizedProps) || getClipFromProps(node.pendingProps);
+      if (clip) return clip;
       node = node.return;
       depth++;
+    }
+    return null;
+  }
+
+  function getClipFromElement(el) {
+    if (!el || typeof el !== "object") return null;
+
+    // React の内部キーはビルドごとに末尾が変わる。カード本体にない場合は
+    // 子要素の fiber/props も調べ、そこから親コンポーネントをたどる。
+    const elements = [el, ...el.querySelectorAll("*")];
+    for (const current of elements) {
+      const keys = Object.keys(current);
+
+      const propsKey = keys.find((key) => key.startsWith("__reactProps"));
+      if (propsKey) {
+        const clip = getClipFromProps(current[propsKey]);
+        if (clip) return clip;
+      }
+
+      const fiberKey = keys.find((key) => key.startsWith("__reactFiber"));
+      if (fiberKey) {
+        const clip = getClipFromReactNode(current[fiberKey]);
+        if (clip) return clip;
+      }
     }
     return null;
   }
@@ -186,9 +262,7 @@
   function findClipScope() {
     // Workspace のソング一覧パネル(右側)を絞り込めるとスキャンが軽くなる。
     // 一旦 1 件でも clip を持つ要素を見つけて、そのスクロール祖先をスコープとして返す。
-    const candidates = document.querySelectorAll(
-      'div[draggable="true"], [data-testid="clip-row"], a[href*="/song/"]'
-    );
+    const candidates = document.querySelectorAll(CLIP_SELECTOR);
     for (const el of candidates) {
       if (getClipFromElement(el)) return el;
     }
@@ -199,9 +273,7 @@
     // root 配下のあらゆる要素を見て、React fiber に clip があるものを拾う。
     // 同じ clip が複数の DOM ノードに付いていても id 重複排除で 1 回しか加算しない。
     const scope = root && root.querySelectorAll ? root : document;
-    const candidates = scope.querySelectorAll(
-      'div[draggable="true"], [data-testid="clip-row"], a[href*="/song/"]'
-    );
+    const candidates = scope.querySelectorAll(CLIP_SELECTOR);
     for (const el of candidates) {
       const clip = getClipFromElement(el);
       if (!clip) continue;
@@ -282,6 +354,104 @@
   }
 
   /* ---------------------------
+      Per-clip duration labels
+  ----------------------------*/
+  function ensureDurationStyle() {
+    if (document.getElementById(DURATION_STYLE_ID)) return;
+
+    const style = document.createElement("style");
+    style.id = DURATION_STYLE_ID;
+    style.textContent = `
+      .${DURATION_LABEL_CLASS} {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        box-sizing: border-box;
+        min-height: 16px;
+        padding: 0 4px;
+        border: 1px solid rgba(246, 130, 32, 0.7);
+        border-radius: 3px;
+        color: rgb(255, 176, 92);
+        font: 600 11px/14px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        white-space: nowrap;
+        pointer-events: none;
+      }
+    `;
+    (document.head || document.documentElement).appendChild(style);
+  }
+
+  function findDurationMount(row) {
+    const spans = row.querySelectorAll("span");
+    for (const span of spans) {
+      if (/^\s*\d+\s*BPM\s*$/i.test(span.textContent || "")) {
+        return span.parentElement;
+      }
+    }
+    return null;
+  }
+
+  function updateVisibleDurationLabels() {
+    ensureDurationStyle();
+
+    const rows = document.querySelectorAll(CLIP_SELECTOR);
+    for (const row of rows) {
+      let label = row.querySelector(`.${DURATION_LABEL_CLASS}`);
+      const clip = getClipFromElement(row);
+
+      if (!clip) {
+        if (label) label.remove();
+        continue;
+      }
+
+      const mount = findDurationMount(row);
+      if (!mount) continue;
+
+      if (!label) {
+        label = document.createElement("span");
+        label.className = DURATION_LABEL_CLASS;
+        label.title = "再生時間";
+        label.setAttribute("aria-label", "再生時間");
+        mount.appendChild(label);
+      } else if (label.parentElement !== mount) {
+        mount.appendChild(label);
+      }
+
+      const durationText = formatSeconds(clip.metadata.duration);
+      if (label.textContent !== durationText) label.textContent = durationText;
+      if (label.dataset.clipId !== String(clip.id)) {
+        label.dataset.clipId = String(clip.id);
+      }
+    }
+  }
+
+  function scheduleDurationLabels() {
+    if (durationScanScheduled) return;
+    durationScanScheduled = true;
+    requestAnimationFrame(() => {
+      durationScanScheduled = false;
+      updateVisibleDurationLabels();
+    });
+  }
+
+  function mutationAffectsClipRows(mutation) {
+    const target = mutation.target;
+    if (
+      target &&
+      target.nodeType === Node.ELEMENT_NODE &&
+      target.closest(CLIP_SELECTOR) &&
+      !target.closest(`.${DURATION_LABEL_CLASS}`)
+    ) {
+      return true;
+    }
+
+    for (const node of [...mutation.addedNodes, ...mutation.removedNodes]) {
+      if (node.nodeType !== Node.ELEMENT_NODE) continue;
+      if (node.matches(CLIP_SELECTOR) || node.querySelector(CLIP_SELECTOR)) return true;
+    }
+    return false;
+  }
+
+  /* ---------------------------
       Full scroll → sum all data
   ----------------------------*/
   async function sumAllWithScroll() {
@@ -338,8 +508,9 @@
     if (observerStarted) return;
     observerStarted = true;
 
-    const observer = new MutationObserver(() => {
+    const observer = new MutationObserver((mutations) => {
       ensureBadge();
+      if (mutations.some(mutationAffectsClipRows)) scheduleDurationLabels();
     });
 
     observer.observe(document.documentElement, {
@@ -350,6 +521,7 @@
     // 念のための保険
     setInterval(() => {
       ensureBadge();
+      scheduleDurationLabels();
     }, 1500);
   }
 
@@ -365,6 +537,9 @@
         setTimeout(() => ensureBadge(), 0);
         setTimeout(() => ensureBadge(), 300);
         setTimeout(() => ensureBadge(), 1000);
+        setTimeout(() => scheduleDurationLabels(), 0);
+        setTimeout(() => scheduleDurationLabels(), 300);
+        setTimeout(() => scheduleDurationLabels(), 1000);
         return ret;
       };
     };
@@ -376,6 +551,9 @@
       setTimeout(() => ensureBadge(), 0);
       setTimeout(() => ensureBadge(), 300);
       setTimeout(() => ensureBadge(), 1000);
+      setTimeout(() => scheduleDurationLabels(), 0);
+      setTimeout(() => scheduleDurationLabels(), 300);
+      setTimeout(() => scheduleDurationLabels(), 1000);
     });
   }
 
@@ -385,6 +563,7 @@
   function init() {
     if (!/suno\.com$/.test(location.hostname)) return;
     ensureBadge("再生時間を集計");
+    scheduleDurationLabels();
     startBadgeObserver();
     hookHistoryEvents();
   }
