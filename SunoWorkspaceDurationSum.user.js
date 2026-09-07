@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Suno Workspace Duration Sum
 // @namespace    https://hwiiza.example
-// @version      2.1
-// @description  Workspace の各曲に再生時間を表示し、Open in Studio 済みの曲を背景色で識別・解除。全曲の合計時間もスクロールで集計（List/Waveform/Grid 全表示モード対応）。
+// @version      2.2
+// @description  Workspace の各曲に再生時間を表示し、Create／Studio から Open in Studio 済みの曲を背景色で識別・解除。全曲の合計時間もスクロールで集計（List/Waveform/Grid 全表示モード対応）。
 // @match        https://suno.com/*
 // @match        https://www.suno.com/*
 // @run-at       document-end
@@ -25,6 +25,8 @@
   const STUDIO_FLAG_CLEAR_CLASS = "suno-scrollsum-studio-flag-clear";
   const CLIP_SELECTOR =
     'div[draggable="true"], [data-testid="clip-row"], a[href*="/song/"]';
+  const CLIP_MORE_BUTTON_SELECTOR =
+    'button[aria-label="More"], button[aria-label="More options"]';
 
   let observerStarted = false;
   let routeHooked = false;
@@ -304,6 +306,23 @@
       }
     }
     return null;
+  }
+
+  function getClipIdFromElement(el) {
+    if (!el) return null;
+
+    const clip = getClipFromElement(el);
+    if (clip && clip.id) return String(clip.id);
+
+    // Create の List view は曲IDを /song/{id} リンクとして持つため、
+    // React内部構造が変わった場合もこの公開DOMから対象曲を特定できる。
+    const songLink =
+      el.matches && el.matches('a[href*="/song/"]')
+        ? el
+        : el.querySelector && el.querySelector('a[href*="/song/"]');
+    const href = songLink && songLink.getAttribute("href");
+    const match = href && href.match(/\/song\/([^/?#]+)/);
+    return match ? match[1] : null;
   }
 
   function findClipScope() {
@@ -591,11 +610,10 @@
             : event.target && event.target.parentElement;
         if (!target) return;
 
-        const moreButton = target.closest('button[aria-label="More"]');
+        const moreButton = target.closest(CLIP_MORE_BUTTON_SELECTOR);
         if (moreButton) {
           const row = moreButton.closest(CLIP_SELECTOR);
-          const clip = row ? getClipFromElement(row) : null;
-          activeContextClipId = clip ? String(clip.id) : null;
+          activeContextClipId = row ? getClipIdFromElement(row) : null;
           return;
         }
 
