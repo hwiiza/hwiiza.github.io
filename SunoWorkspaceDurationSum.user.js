@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Suno Workspace Duration Sum
 // @namespace    https://hwiiza.example
-// @version      2.0
-// @description  Workspace の各曲に再生時間を表示し、全曲の合計時間もスクロールで集計（List/Waveform/Grid 全表示モード対応）。右上のバッジを常時表示＆ドラッグ移動＆位置記憶。シングルクリックで集計実行。
+// @version      2.1
+// @description  Workspace の各曲に再生時間を表示し、Open in Studio 済みの曲を背景色で識別・解除。全曲の合計時間もスクロールで集計（List/Waveform/Grid 全表示モード対応）。
 // @match        https://suno.com/*
 // @match        https://www.suno.com/*
 // @run-at       document-end
@@ -20,12 +20,17 @@
   const BADGE_ID = "suno-scrollsum-badge";
   const DURATION_LABEL_CLASS = "suno-scrollsum-duration";
   const DURATION_STYLE_ID = "suno-scrollsum-duration-style";
+  const STUDIO_OPENED_IDS_KEY = "suno_scrollsum_studio_opened_ids_v1";
+  const STUDIO_OPENED_CLASS = "suno-scrollsum-studio-opened";
+  const STUDIO_FLAG_CLEAR_CLASS = "suno-scrollsum-studio-flag-clear";
   const CLIP_SELECTOR =
     'div[draggable="true"], [data-testid="clip-row"], a[href*="/song/"]';
 
   let observerStarted = false;
   let routeHooked = false;
+  let studioOpenTrackingStarted = false;
   let durationScanScheduled = false;
+  let activeContextClipId = null;
 
   /* ---------------------------
       Utility functions
@@ -46,6 +51,48 @@
     return h > 0
       ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
       : `${m}:${String(s).padStart(2, "0")}`;
+  }
+
+  function loadStudioOpenedIds() {
+    try {
+      const value = JSON.parse(localStorage.getItem(STUDIO_OPENED_IDS_KEY) || "[]");
+      if (!Array.isArray(value)) return new Set();
+      return new Set(value.filter((id) => typeof id === "string" && id));
+    } catch (error) {
+      console.warn("[Suno ScrollSum] loadStudioOpenedIds error:", error);
+      return new Set();
+    }
+  }
+
+  function saveStudioOpenedId(clipId) {
+    if (!clipId) return false;
+    try {
+      const ids = loadStudioOpenedIds();
+      const before = ids.size;
+      ids.add(String(clipId));
+      if (ids.size !== before) {
+        localStorage.setItem(STUDIO_OPENED_IDS_KEY, JSON.stringify([...ids]));
+      }
+      scheduleDurationLabels();
+      return true;
+    } catch (error) {
+      console.warn("[Suno ScrollSum] saveStudioOpenedId error:", error);
+      return false;
+    }
+  }
+
+  function removeStudioOpenedId(clipId) {
+    if (!clipId) return false;
+    try {
+      const ids = loadStudioOpenedIds();
+      if (!ids.delete(String(clipId))) return false;
+      localStorage.setItem(STUDIO_OPENED_IDS_KEY, JSON.stringify([...ids]));
+      scheduleDurationLabels();
+      return true;
+    } catch (error) {
+      console.warn("[Suno ScrollSum] removeStudioOpenedId error:", error);
+      return false;
+    }
   }
 
   /* ---------------------------
@@ -357,11 +404,14 @@
       Per-clip duration labels
   ----------------------------*/
   function ensureDurationStyle() {
-    if (document.getElementById(DURATION_STYLE_ID)) return;
+    let style = document.getElementById(DURATION_STYLE_ID);
+    if (!style) {
+      style = document.createElement("style");
+      style.id = DURATION_STYLE_ID;
+      (document.head || document.documentElement).appendChild(style);
+    }
 
-    const style = document.createElement("style");
-    style.id = DURATION_STYLE_ID;
-    style.textContent = `
+    const styleText = `
       .${DURATION_LABEL_CLASS} {
         display: inline-flex;
         align-items: center;
@@ -376,8 +426,39 @@
         white-space: nowrap;
         pointer-events: none;
       }
+
+      .${STUDIO_OPENED_CLASS} {
+        background-color: rgba(246, 130, 32, 0.16) !important;
+        box-shadow: none !important;
+        transition: background-color 120ms ease;
+      }
+
+      .${STUDIO_OPENED_CLASS}:hover {
+        background-color: rgba(246, 130, 32, 0.24) !important;
+      }
+
+      .${STUDIO_FLAG_CLEAR_CLASS} {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        box-sizing: border-box;
+        width: 16px;
+        height: 16px;
+        padding: 0;
+        border: 1px solid rgba(246, 130, 32, 0.65);
+        border-radius: 50%;
+        background: transparent;
+        color: rgb(255, 176, 92);
+        font: 700 12px/1 system-ui, sans-serif;
+        cursor: pointer;
+      }
+
+      .${STUDIO_FLAG_CLEAR_CLASS}:hover {
+        background: rgba(246, 130, 32, 0.28);
+        color: white;
+      }
     `;
-    (document.head || document.documentElement).appendChild(style);
+    if (style.textContent !== styleText) style.textContent = styleText;
   }
 
   function findDurationMount(row) {
@@ -394,17 +475,33 @@
     ensureDurationStyle();
 
     const rows = document.querySelectorAll(CLIP_SELECTOR);
+    const studioOpenedIds = loadStudioOpenedIds();
     for (const row of rows) {
       let label = row.querySelector(`.${DURATION_LABEL_CLASS}`);
+      let clearButton = row.querySelector(`.${STUDIO_FLAG_CLEAR_CLASS}`);
       const clip = getClipFromElement(row);
 
       if (!clip) {
         if (label) label.remove();
+        if (clearButton) clearButton.remove();
+        row.classList.remove(STUDIO_OPENED_CLASS);
+        delete row.dataset.sunoStudioOpened;
         continue;
       }
 
+      const studioOpened = studioOpenedIds.has(String(clip.id));
+      row.classList.toggle(STUDIO_OPENED_CLASS, studioOpened);
+      if (studioOpened) {
+        row.dataset.sunoStudioOpened = "true";
+      } else {
+        delete row.dataset.sunoStudioOpened;
+      }
+
       const mount = findDurationMount(row);
-      if (!mount) continue;
+      if (!mount) {
+        if (!studioOpened && clearButton) clearButton.remove();
+        continue;
+      }
 
       if (!label) {
         label = document.createElement("span");
@@ -420,6 +517,32 @@
       if (label.textContent !== durationText) label.textContent = durationText;
       if (label.dataset.clipId !== String(clip.id)) {
         label.dataset.clipId = String(clip.id);
+      }
+
+      if (studioOpened) {
+        if (!clearButton) {
+          clearButton = document.createElement("button");
+          clearButton.type = "button";
+          clearButton.className = STUDIO_FLAG_CLEAR_CLASS;
+          clearButton.textContent = "×";
+          clearButton.title = "Open in Studio フラグを解除";
+          clearButton.setAttribute("aria-label", "Open in Studio フラグを解除");
+          clearButton.addEventListener("pointerdown", (event) => {
+            event.stopPropagation();
+          });
+          clearButton.addEventListener("mousedown", (event) => {
+            event.stopPropagation();
+          });
+          clearButton.addEventListener("click", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            removeStudioOpenedId(clearButton.dataset.clipId);
+          });
+        }
+        clearButton.dataset.clipId = String(clip.id);
+        if (clearButton.parentElement !== mount) mount.appendChild(clearButton);
+      } else if (clearButton) {
+        clearButton.remove();
       }
     }
   }
@@ -449,6 +572,42 @@
       if (node.matches(CLIP_SELECTOR) || node.querySelector(CLIP_SELECTOR)) return true;
     }
     return false;
+  }
+
+  /* ---------------------------
+      Open in Studio tracking
+  ----------------------------*/
+  function startOpenInStudioTracking() {
+    if (studioOpenTrackingStarted) return;
+    studioOpenTrackingStarted = true;
+
+    // メニューは body 直下の portal に出るため、More を押した時点で元カードを保持する。
+    document.addEventListener(
+      "click",
+      (event) => {
+        const target =
+          event.target && event.target.nodeType === Node.ELEMENT_NODE
+            ? event.target
+            : event.target && event.target.parentElement;
+        if (!target) return;
+
+        const moreButton = target.closest('button[aria-label="More"]');
+        if (moreButton) {
+          const row = moreButton.closest(CLIP_SELECTOR);
+          const clip = row ? getClipFromElement(row) : null;
+          activeContextClipId = clip ? String(clip.id) : null;
+          return;
+        }
+
+        const openInStudioButton = target.closest(
+          'button[aria-label="Open in Studio"]'
+        );
+        if (openInStudioButton && activeContextClipId) {
+          saveStudioOpenedId(activeContextClipId);
+        }
+      },
+      true
+    );
   }
 
   /* ---------------------------
@@ -534,6 +693,7 @@
       if (typeof orig !== "function") return;
       history[fnName] = function (...args) {
         const ret = orig.apply(this, args);
+        activeContextClipId = null;
         setTimeout(() => ensureBadge(), 0);
         setTimeout(() => ensureBadge(), 300);
         setTimeout(() => ensureBadge(), 1000);
@@ -548,6 +708,7 @@
     wrap("replaceState");
 
     window.addEventListener("popstate", () => {
+      activeContextClipId = null;
       setTimeout(() => ensureBadge(), 0);
       setTimeout(() => ensureBadge(), 300);
       setTimeout(() => ensureBadge(), 1000);
@@ -565,6 +726,7 @@
     ensureBadge("再生時間を集計");
     scheduleDurationLabels();
     startBadgeObserver();
+    startOpenInStudioTracking();
     hookHistoryEvents();
   }
 
