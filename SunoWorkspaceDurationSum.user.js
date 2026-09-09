@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Suno Workspace Duration Sum
 // @namespace    https://hwiiza.example
-// @version      2.2
+// @version      2.3
 // @description  Workspace の各曲に再生時間を表示し、Create／Studio から Open in Studio 済みの曲を背景色で識別・解除。全曲の合計時間もスクロールで集計（List/Waveform/Grid 全表示モード対応）。
 // @match        https://suno.com/*
 // @match        https://www.suno.com/*
@@ -596,36 +596,47 @@
   /* ---------------------------
       Open in Studio tracking
   ----------------------------*/
+  function isOpenInStudioAction(button) {
+    if (!button) return false;
+    const ariaLabel = (button.getAttribute("aria-label") || "")
+      .replace(/\s+/g, " ")
+      .trim();
+    const text = (button.textContent || "").replace(/\s+/g, " ").trim();
+    return (
+      ariaLabel === "Open in Studio" ||
+      /^Open in Studio(?:\s*New)?$/.test(text)
+    );
+  }
+
+  function trackOpenInStudioInteraction(event) {
+    const target =
+      event.target && event.target.nodeType === Node.ELEMENT_NODE
+        ? event.target
+        : event.target && event.target.parentElement;
+    if (!target) return;
+
+    const moreButton = target.closest(CLIP_MORE_BUTTON_SELECTOR);
+    if (moreButton) {
+      const row = moreButton.closest(CLIP_SELECTOR);
+      activeContextClipId = row ? getClipIdFromElement(row) : null;
+      return;
+    }
+
+    const actionButton = target.closest("button");
+    if (isOpenInStudioAction(actionButton) && activeContextClipId) {
+      saveStudioOpenedId(activeContextClipId);
+      activeContextClipId = null;
+    }
+  }
+
   function startOpenInStudioTracking() {
     if (studioOpenTrackingStarted) return;
     studioOpenTrackingStarted = true;
 
     // メニューは body 直下の portal に出るため、More を押した時点で元カードを保持する。
-    document.addEventListener(
-      "click",
-      (event) => {
-        const target =
-          event.target && event.target.nodeType === Node.ELEMENT_NODE
-            ? event.target
-            : event.target && event.target.parentElement;
-        if (!target) return;
-
-        const moreButton = target.closest(CLIP_MORE_BUTTON_SELECTOR);
-        if (moreButton) {
-          const row = moreButton.closest(CLIP_SELECTOR);
-          activeContextClipId = row ? getClipIdFromElement(row) : null;
-          return;
-        }
-
-        const openInStudioButton = target.closest(
-          'button[aria-label="Open in Studio"]'
-        );
-        if (openInStudioButton && activeContextClipId) {
-          saveStudioOpenedId(activeContextClipId);
-        }
-      },
-      true
-    );
+    // pointerdown は Suno の画面遷移より先に発火する。click はキーボード操作の保険。
+    document.addEventListener("pointerdown", trackOpenInStudioInteraction, true);
+    document.addEventListener("click", trackOpenInStudioInteraction, true);
   }
 
   /* ---------------------------
