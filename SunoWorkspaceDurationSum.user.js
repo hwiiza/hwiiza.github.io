@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Suno Workspace Duration Sum
 // @namespace    https://hwiiza.example
-// @version      2.3
+// @version      2.4
 // @description  Workspace の各曲に再生時間を表示し、Create／Studio から Open in Studio 済みの曲を背景色で識別・解除。全曲の合計時間もスクロールで集計（List/Waveform/Grid 全表示モード対応）。
 // @match        https://suno.com/*
 // @match        https://www.suno.com/*
@@ -14,7 +14,7 @@
 (function () {
   "use strict";
 
-  console.log("[Suno ScrollSum] loaded (persistent badge)");
+  console.log("[Suno ScrollSum] v2.4 loaded (persistent badge)");
 
   const POS_KEY_BADGE = "suno_scrollsum_badge_pos_v1";
   const BADGE_ID = "suno-scrollsum-badge";
@@ -608,6 +608,21 @@
     );
   }
 
+  function getExpandedMenuClipId() {
+    const moreButtons = document.querySelectorAll(CLIP_MORE_BUTTON_SELECTOR);
+    for (const moreButton of moreButtons) {
+      const expanded =
+        moreButton.getAttribute("aria-expanded") === "true" ||
+        moreButton.getAttribute("data-state") === "open";
+      if (!expanded) continue;
+
+      const row = moreButton.closest(CLIP_SELECTOR);
+      const clipId = row ? getClipIdFromElement(row) : null;
+      if (clipId) return clipId;
+    }
+    return null;
+  }
+
   function trackOpenInStudioInteraction(event) {
     const target =
       event.target && event.target.nodeType === Node.ELEMENT_NODE
@@ -623,8 +638,11 @@
     }
 
     const actionButton = target.closest("button");
-    if (isOpenInStudioAction(actionButton) && activeContextClipId) {
-      saveStudioOpenedId(activeContextClipId);
+    if (isOpenInStudioAction(actionButton)) {
+      // More→Edit の間に SPA の履歴更新や再描画が入る場合がある。
+      // Open 直前の展開中ボタンから対象行を引き直し、保持変数だけに依存しない。
+      const clipId = getExpandedMenuClipId() || activeContextClipId;
+      if (clipId) saveStudioOpenedId(clipId);
       activeContextClipId = null;
     }
   }
