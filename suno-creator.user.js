@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Suno Creator
 // @namespace    hwiiza.suno
-// @version      0.2.8
+// @version      0.2.9
 // @description  SunoのCreate画面にパネルを表示し、JSON(1曲/配列)から曲を生成・連続生成。曲のMP3一括/個別ダウンロードも対応。
 // @match        https://suno.com/*
 // @match        https://www.suno.com/*
@@ -218,9 +218,10 @@
   // ---- UI (SPA対策: 無ければ作る／消えたら再注入) ----
   const PANEL_ID = 'suno-creator-panel';
   const FAB_ID = 'suno-creator-fab';
+  const isCreatePage = () => location.pathname.replace(/\/+$/, '') === '/create';
 
   function init() {
-    if (!document.body || document.getElementById(PANEL_ID)) return;
+    if (!document.body || !isCreatePage() || document.getElementById(PANEL_ID)) return;
     const oldFab = document.getElementById(FAB_ID); if (oldFab) oldFab.remove();
 
     let songs = [];     // 読み込んだ曲
@@ -726,7 +727,22 @@
     console.log('[Suno Creator] ready');
   } // end init
 
-  init();
-  // SunoはSPA。マウント後/ページ遷移でUIが無くなったら作り直す
-  setInterval(() => { if (!document.getElementById(PANEL_ID)) init(); }, 1500);
+  function syncRouteVisibility() {
+    const panel = document.getElementById(PANEL_ID);
+    const fab = document.getElementById(FAB_ID);
+    if (isCreatePage()) {
+      if (!panel) init();
+      else {
+        panel.style.display = '';
+        if (fab) fab.style.display = '';
+      }
+    } else {
+      if (panel) panel.style.display = 'none';
+      if (fab) fab.style.display = 'none';
+    }
+  }
+
+  syncRouteVisibility();
+  // SunoはSPA。画面遷移に追従し、Create画面だけでUIを表示する。
+  setInterval(syncRouteVisibility, 1000);
 })();
