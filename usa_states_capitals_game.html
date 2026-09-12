@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>USA 州と州都 当てゲーム</title>
+  <style>
+    :root {
+      --bg: #f5f7fb;
+      --card: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --ok: #15803d;
+      --ng: #b91c1c;
+      --accent: #1d4ed8;
+      --border: #dbe3ef;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+      color: var(--text);
+      background: linear-gradient(180deg, #eef3ff 0%, var(--bg) 40%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 860px;
+      margin: 0 auto;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 20px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.06);
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 1.6rem;
+    }
+
+    p.description {
+      margin: 0 0 16px;
+      color: var(--muted);
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+
+    select, button, input {
+      font-size: 1rem;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      padding: 10px 12px;
+    }
+
+    select, input { min-width: 230px; }
+
+    button {
+      cursor: pointer;
+      background: #fff;
+    }
+
+    button.primary {
+      background: var(--accent);
+      color: white;
+      border-color: var(--accent);
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .quiz-box {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px;
+      background: #fcfdff;
+      margin-bottom: 12px;
+    }
+
+    .label {
+      font-size: 0.9rem;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    .question {
+      font-size: 1.6rem;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+
+    .result {
+      min-height: 1.4em;
+      margin-top: 10px;
+      font-weight: 700;
+    }
+
+    .result.ok { color: var(--ok); }
+    .result.ng { color: var(--ng); }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(80px, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .stat {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px;
+      background: white;
+      text-align: center;
+    }
+
+    .stat .k {
+      display: block;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    .stat .v {
+      font-size: 1.2rem;
+      font-weight: 700;
+    }
+
+    .hint {
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin-top: 8px;
+    }
+  </style>
+</head>
+<body>
+  <main class="container">
+    <h1>USAの州と州都を当てるゲーム</h1>
+    <p class="description">モードを選んで回答してください。<br>① 州 ⇒ 州都、② 州都 ⇒ 州 の2種類で遊べます。</p>
+
+    <section class="controls">
+      <div class="row">
+        <label for="modeSelect">出題モード:</label>
+        <select id="modeSelect">
+          <option value="stateToCapital">州 ⇒ 州都 を当てる</option>
+          <option value="capitalToState">州都 ⇒ 州 を当てる</option>
+        </select>
+        <button id="newQuestionBtn">次の問題</button>
+      </div>
+    </section>
+
+    <section class="quiz-box">
+      <div class="label">問題</div>
+      <div class="question" id="questionText">読み込み中...</div>
+
+      <div class="row">
+        <input id="answerInput" type="text" placeholder="英語で入力（例: Texas / Austin）" autocomplete="off" />
+        <button class="primary" id="checkBtn">答え合わせ</button>
+        <button id="showBtn">答えを見る</button>
+      </div>
+
+      <div class="result" id="resultText"></div>
+      <div class="hint">※ 大文字小文字・前後スペースは無視して判定します。</div>
+
+      <div class="stats">
+        <div class="stat"><span class="k">正解</span><span class="v" id="correctCount">0</span></div>
+        <div class="stat"><span class="k">不正解</span><span class="v" id="wrongCount">0</span></div>
+        <div class="stat"><span class="k">正答率</span><span class="v" id="accuracy">0%</span></div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const data = [
+      ["Alabama", "Montgomery"], ["Alaska", "Juneau"], ["Arizona", "Phoenix"], ["Arkansas", "Little Rock"],
+      ["California", "Sacramento"], ["Colorado", "Denver"], ["Connecticut", "Hartford"], ["Delaware", "Dover"],
+      ["Florida", "Tallahassee"], ["Georgia", "Atlanta"], ["Hawaii", "Honolulu"], ["Idaho", "Boise"],
+      ["Illinois", "Springfield"], ["Indiana", "Indianapolis"], ["Iowa", "Des Moines"], ["Kansas", "Topeka"],
+      ["Kentucky", "Frankfort"], ["Louisiana", "Baton Rouge"], ["Maine", "Augusta"], ["Maryland", "Annapolis"],
+      ["Massachusetts", "Boston"], ["Michigan", "Lansing"], ["Minnesota", "Saint Paul"], ["Mississippi", "Jackson"],
+      ["Missouri", "Jefferson City"], ["Montana", "Helena"], ["Nebraska", "Lincoln"], ["Nevada", "Carson City"],
+      ["New Hampshire", "Concord"], ["New Jersey", "Trenton"], ["New Mexico", "Santa Fe"], ["New York", "Albany"],
+      ["North Carolina", "Raleigh"], ["North Dakota", "Bismarck"], ["Ohio", "Columbus"], ["Oklahoma", "Oklahoma City"],
+      ["Oregon", "Salem"], ["Pennsylvania", "Harrisburg"], ["Rhode Island", "Providence"], ["South Carolina", "Columbia"],
+      ["South Dakota", "Pierre"], ["Tennessee", "Nashville"], ["Texas", "Austin"], ["Utah", "Salt Lake City"],
+      ["Vermont", "Montpelier"], ["Virginia", "Richmond"], ["Washington", "Olympia"], ["West Virginia", "Charleston"],
+      ["Wisconsin", "Madison"], ["Wyoming", "Cheyenne"]
+    ];
+
+    const modeSelect = document.getElementById('modeSelect');
+    const questionText = document.getElementById('questionText');
+    const answerInput = document.getElementById('answerInput');
+    const resultText = document.getElementById('resultText');
+    const checkBtn = document.getElementById('checkBtn');
+    const showBtn = document.getElementById('showBtn');
+    const newQuestionBtn = document.getElementById('newQuestionBtn');
+
+    const correctCountEl = document.getElementById('correctCount');
+    const wrongCountEl = document.getElementById('wrongCount');
+    const accuracyEl = document.getElementById('accuracy');
+
+    let current = null;
+    let correctCount = 0;
+    let wrongCount = 0;
+
+    function normalize(text) {
+      return text.trim().toLowerCase().replace(/\s+/g, ' ');
+    }
+
+    function updateStats() {
+      const total = correctCount + wrongCount;
+      const accuracy = total === 0 ? 0 : Math.round((correctCount / total) * 100);
+      correctCountEl.textContent = String(correctCount);
+      wrongCountEl.textContent = String(wrongCount);
+      accuracyEl.textContent = `${accuracy}%`;
+    }
+
+    function getQuestionAndAnswer(pair, mode) {
+      const [state, capital] = pair;
+      if (mode === 'stateToCapital') {
+        return { prompt: state, answer: capital, promptLabel: `州: ${state}` };
+      }
+      return { prompt: capital, answer: state, promptLabel: `州都: ${capital}` };
+    }
+
+    function newQuestion() {
+      const index = Math.floor(Math.random() * data.length);
+      const pair = data[index];
+      const mode = modeSelect.value;
+      current = getQuestionAndAnswer(pair, mode);
+      questionText.textContent = current.promptLabel;
+      answerInput.value = '';
+      resultText.textContent = '';
+      resultText.className = 'result';
+      answerInput.focus();
+    }
+
+    function checkAnswer() {
+      if (!current) return;
+      const user = normalize(answerInput.value);
+      if (!user) {
+        resultText.textContent = '先に回答を入力してください。';
+        resultText.className = 'result ng';
+        return;
+      }
+      const expected = normalize(current.answer);
+
+      if (user === expected) {
+        correctCount += 1;
+        resultText.textContent = `正解！ ${current.prompt} → ${current.answer}`;
+        resultText.className = 'result ok';
+      } else {
+        wrongCount += 1;
+        resultText.textContent = `不正解。正解は ${current.answer} です。`;
+        resultText.className = 'result ng';
+      }
+      updateStats();
+    }
+
+    function showAnswer() {
+      if (!current) return;
+      resultText.textContent = `答え: ${current.prompt} → ${current.answer}`;
+      resultText.className = 'result';
+    }
+
+    checkBtn.addEventListener('click', checkAnswer);
+    showBtn.addEventListener('click', showAnswer);
+    newQuestionBtn.addEventListener('click', newQuestion);
+
+    modeSelect.addEventListener('change', () => {
+      const placeholder = modeSelect.value === 'stateToCapital'
+        ? '州都を英語で入力（例: Austin）'
+        : '州名を英語で入力（例: Texas）';
+      answerInput.placeholder = placeholder;
+      newQuestion();
+    });
+
+    answerInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') checkAnswer();
+    });
+
+    updateStats();
+    newQuestion();
+  </script>
+</body>
+</html>
