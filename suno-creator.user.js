@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Suno Creator
 // @namespace    hwiiza.suno
-// @version      0.2.10
+// @version      0.2.11
 // @description  SunoのCreate画面にパネルを表示し、JSON(1曲/配列)から曲を生成・連続生成。曲のMP3一括/個別ダウンロードも対応。
 // @match        https://suno.com/*
 // @match        https://www.suno.com/*
@@ -154,7 +154,10 @@
     return null;
   }
   function getTitle() { return firstVisible('input[placeholder="Song Title (Optional)"], input[placeholder="曲名(任意)"]'); }
-  function getCreate() { return firstVisible('button[aria-label="Create song"]') || byText('button', 'Create'); }
+  function getCreate() {
+    return firstVisible('button[aria-label="Create song"], button[aria-label="曲を作成"]')
+      || byText('button', 'Create');
+  }
   function setVocal(gender) {
     const labels = gender === 'female' ? ['Female', '女性'] : ['Male', '男性'];
     const btn = byText('button', ...labels);
@@ -227,6 +230,10 @@
     await sleep(400);
     const btn = getCreate();
     if (!btn) { log('✖ 生成ボタンが見つからない'); return false; }
+    if (btn.matches(':disabled, [aria-disabled="true"]')) {
+      log('✖ Sunoの生成ボタンが無効です');
+      return false;
+    }
     btn.click();
     log('  ✅ 投入: ' + (song.title || song.style || '曲'));
     return true;
