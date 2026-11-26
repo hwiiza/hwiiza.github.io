@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Suno Creator
 // @namespace    hwiiza.suno
-// @version      0.2.9
+// @version      0.2.10
 // @description  SunoのCreate画面にパネルを表示し、JSON(1曲/配列)から曲を生成・連続生成。曲のMP3一括/個別ダウンロードも対応。
 // @match        https://suno.com/*
 // @match        https://www.suno.com/*
@@ -104,9 +104,9 @@
     for (const el of document.querySelectorAll(selector)) if (isVisible(el)) return el;
     return null;
   }
-  function byText(tag, text) {
-    for (const el of document.querySelectorAll(tag)) {
-      if ((el.textContent || '').trim() === text && isVisible(el)) return el;
+  function byText(selector, ...labels) {
+    for (const el of document.querySelectorAll(selector)) {
+      if (labels.includes((el.textContent || '').trim()) && isVisible(el)) return el;
     }
     return null;
   }
@@ -130,11 +130,20 @@
   }
 
   // ---- Suno UI 操作 ----
-  function ensureAdvanced() { const adv = byText('button', 'Advanced'); if (adv) adv.click(); }
+  function ensureAdvanced() {
+    const adv = byText('button', 'Advanced', 'アドバンスド');
+    if (adv && adv.getAttribute('aria-selected') !== 'true') adv.click();
+  }
+  const SLIDER_LABELS_JA = { Weirdness: '奇抜さ', 'Style Influence': 'スタイルの影響' };
+  function getSlider(label) {
+    return firstVisible(`[role="slider"][aria-label="${label}"], [role="slider"][aria-label="${SLIDER_LABELS_JA[label]}"]`);
+  }
   function ensureMoreOptions() {
-    if (firstVisible('[role="slider"][aria-label="Weirdness"]')) return;
-    const mo = byText('div', 'More Options') || byText('button', 'More Options');
-    if (mo) mo.click();
+    if (getSlider('Weirdness') || getSlider('Style Influence')) return;
+    const labels = ['More Options', 'その他のオプション'];
+    const heading = byText('button, [role="button"]', ...labels) || byText('div', ...labels);
+    const toggle = heading?.closest('button, [role="button"]') || heading;
+    if (toggle && toggle.getAttribute('aria-expanded') !== 'true') toggle.click();
   }
   // 歌詞欄: 2026-06以降は contenteditable(.lyrics-editor-content)。旧textareaもフォールバックで対応。
   function getLyrics() { return document.querySelector('.lyrics-editor-content') || document.querySelector('[aria-label="Lyrics editor"]') || firstVisible('textarea[data-testid="lyrics-textarea"]'); }
@@ -144,32 +153,36 @@
     for (const t of document.querySelectorAll('textarea:not([data-testid="lyrics-textarea"])')) if (isVisible(t)) return t;
     return null;
   }
-  function getTitle() { return firstVisible('input[placeholder="Song Title (Optional)"]'); }
+  function getTitle() { return firstVisible('input[placeholder="Song Title (Optional)"], input[placeholder="曲名(任意)"]'); }
   function getCreate() { return firstVisible('button[aria-label="Create song"]') || byText('button', 'Create'); }
   function setVocal(gender) {
-    const label = gender === 'female' ? 'Female' : gender === 'male' ? 'Male' : null;
-    if (!label) return;
-    const btn = byText('button', label);
-    if (btn && btn.getAttribute('data-selected') !== 'true') btn.click();
+    const labels = gender === 'female' ? ['Female', '女性'] : ['Male', '男性'];
+    const btn = byText('button', ...labels);
+    if (!btn) return false;
+    if (btn.getAttribute('data-selected') !== 'true') btn.click();
+    return true;
   }
   // カスタムスライダー(role=slider)を矢印キーで目標値へ。keyCode必須＋各押下に小休止。
   async function setSlider(ariaLabel, target) {
-    const s = firstVisible(`[role="slider"][aria-label="${ariaLabel}"]`);
-    if (!s) return false;
+    const s = getSlider(ariaLabel);
+    if (!s || !Number.isFinite(target)) return false;
     target = Math.max(0, Math.min(100, Math.round(target)));
+    const readValue = () => Number(s.getAttribute('aria-valuenow') ?? NaN);
     s.focus();
     for (let k = 0; k < 220; k++) {
-      const now = Number(s.getAttribute('aria-valuenow'));
+      const now = readValue();
       if (Number.isNaN(now) || now === target) break;
       const right = now < target;
       s.dispatchEvent(new KeyboardEvent('keydown', { key: right ? 'ArrowRight' : 'ArrowLeft', code: right ? 'ArrowRight' : 'ArrowLeft', keyCode: right ? 39 : 37, which: right ? 39 : 37, bubbles: true, cancelable: true }));
       await sleep(32);
-      if (Number(s.getAttribute('aria-valuenow')) === now) break; // これ以上動かなければ終了
+      if (readValue() === now) break; // これ以上動かなければ終了
     }
-    return Number(s.getAttribute('aria-valuenow')) === target;
+    return readValue() === target;
   }
 
   async function fillSong(song, log) {
+    let allApplied = true;
+    const warn = (message) => { allApplied = false; log('⚠ ' + message); };
     ensureAdvanced();
     await sleep(800);
     if (song.instrumental) {
@@ -178,24 +191,28 @@
       await sleep(300);
     } else if (song.lyrics) {
       const lyr = getLyrics();
-      if (!lyr) { log('⚠ 歌詞欄が見つからない'); }
+      if (!lyr) { warn('歌詞欄が見つからない'); }
       else if (lyr.isContentEditable) {
         lyr.focus(); lyr.click(); await sleep(150);
         await setEditableText(lyr, song.lyrics); await sleep(200);
         if (!(lyr.innerText || '').trim()) { await setEditableText(lyr, song.lyrics); await sleep(150); }  // 初回失敗時リトライ
       } else { setNativeValue(lyr, song.lyrics); }
     }
-    if (song.style) { const st = getStyle(); if (st) setNativeValue(st, song.style); else log('⚠ スタイル欄が見つからない'); }
-    if (song.title) { const ti = getTitle(); if (ti) setNativeValue(ti, song.title); }
+    if (song.style) { const st = getStyle(); if (st) setNativeValue(st, song.style); else warn('スタイル欄が見つからない'); }
+    if (song.title) { const ti = getTitle(); if (ti) setNativeValue(ti, song.title); else warn('曲名欄が見つからない'); }
     const needMore = song.exclude || (song.vocal && song.vocal !== 'auto') || song.weirdness != null || song.styleInfluence != null;
     if (needMore) {
       ensureMoreOptions();
       await sleep(500);
-      if (song.exclude) { const ex = firstVisible('input[placeholder="Exclude styles"]'); if (ex) setNativeValue(ex, song.exclude); }
-      if (song.vocal && song.vocal !== 'auto') setVocal(song.vocal);
-      if (song.weirdness != null && !(await setSlider('Weirdness', Number(song.weirdness)))) log('⚠ Weirdness設定に失敗');
-      if (song.styleInfluence != null && !(await setSlider('Style Influence', Number(song.styleInfluence)))) log('⚠ Style Influence設定に失敗');
+      if (song.exclude) {
+        const ex = firstVisible('input[placeholder="Exclude styles"], input[placeholder="スタイルを除外"]');
+        if (ex) setNativeValue(ex, song.exclude); else warn('除外スタイル欄が見つからない');
+      }
+      if (song.vocal && song.vocal !== 'auto' && !setVocal(song.vocal)) warn('ボーカル性別のボタンが見つからない');
+      if (song.weirdness != null && !(await setSlider('Weirdness', Number(song.weirdness)))) warn('Weirdness設定に失敗');
+      if (song.styleInfluence != null && !(await setSlider('Style Influence', Number(song.styleInfluence)))) warn('Style Influence設定に失敗');
     }
+    return allApplied;
   }
 
   function validate(s) {
@@ -517,7 +534,10 @@
       if (err) { log(`✖ #${i + 1}: ${err}`); return; }
       busy = true; $('#sc-run').disabled = true;
       log('入力のみ（生成しない）: ' + (s.title || '#' + (i + 1)));
-      try { await fillSong(s, log); log('✅ 入力完了（Createは押していません。Suno画面で反映を確認）'); }
+      try {
+        const allApplied = await fillSong(s, log);
+        log(allApplied ? '✅ 入力完了（Createは押していません。Suno画面で反映を確認）' : '⚠ 一部の項目を反映できませんでした（Createは押していません）');
+      }
       catch (e) { log('✖ ' + e.message); }
       finally { busy = false; $('#sc-run').disabled = false; }
     }
