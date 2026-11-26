@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Suno Workspace Duration Sum
 // @namespace    https://hwiiza.example
-// @version      2.4
+// @version      2.5
 // @description  Workspace の各曲に再生時間を表示し、Create／Studio から Open in Studio 済みの曲を背景色で識別・解除。全曲の合計時間もスクロールで集計（List/Waveform/Grid 全表示モード対応）。
 // @match        https://suno.com/*
 // @match        https://www.suno.com/*
@@ -14,7 +14,7 @@
 (function () {
   "use strict";
 
-  console.log("[Suno ScrollSum] v2.4 loaded (persistent badge)");
+  console.log("[Suno ScrollSum] v2.5 loaded (persistent badge)");
 
   const POS_KEY_BADGE = "suno_scrollsum_badge_pos_v1";
   const BADGE_ID = "suno-scrollsum-badge";
@@ -26,7 +26,8 @@
   const CLIP_SELECTOR =
     'div[draggable="true"], [data-testid="clip-row"], a[href*="/song/"]';
   const CLIP_MORE_BUTTON_SELECTOR =
-    'button[aria-label="More"], button[aria-label="More options"]';
+    'button:is([aria-label="More"], [aria-label="More options"], [aria-label="その他のオプション"])';
+  const OPEN_IN_STUDIO_LABEL = /^(?:Open in Studio|Studio\s*で開く)(?:\s*(?:New|新規))?$/;
 
   let observerStarted = false;
   let routeHooked = false;
@@ -596,15 +597,10 @@
   /* ---------------------------
       Open in Studio tracking
   ----------------------------*/
-  function isOpenInStudioAction(button) {
-    if (!button) return false;
-    const ariaLabel = (button.getAttribute("aria-label") || "")
-      .replace(/\s+/g, " ")
-      .trim();
-    const text = (button.textContent || "").replace(/\s+/g, " ").trim();
-    return (
-      ariaLabel === "Open in Studio" ||
-      /^Open in Studio(?:\s*New)?$/.test(text)
+  function isOpenInStudioAction(item) {
+    if (!item) return false;
+    return [item.getAttribute("aria-label"), item.textContent].some((label) =>
+      OPEN_IN_STUDIO_LABEL.test((label || "").replace(/\s+/g, " ").trim())
     );
   }
 
@@ -637,8 +633,8 @@
       return;
     }
 
-    const actionButton = target.closest("button");
-    if (isOpenInStudioAction(actionButton)) {
+    const actionItem = target.closest('[role="menuitem"]') || target.closest("button");
+    if (isOpenInStudioAction(actionItem)) {
       // More→Edit の間に SPA の履歴更新や再描画が入る場合がある。
       // Open 直前の展開中ボタンから対象行を引き直し、保持変数だけに依存しない。
       const clipId = getExpandedMenuClipId() || activeContextClipId;
